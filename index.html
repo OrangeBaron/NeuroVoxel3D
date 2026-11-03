@@ -1,0 +1,1943 @@
+<!DOCTYPE html>
+<html lang="it" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuroVoxel 3D — Visualizzatore TAC & DICOM Volumetrico</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Daikon DICOM Parser per supporto esteso a tag e sintassi DICOM standard -->
+    <script src="https://cdn.jsdelivr.net/npm/daikon@1.2.42/release/current/daikon-min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #070b12;
+            --panel-bg: rgba(13, 20, 33, 0.88);
+            --border-glow: rgba(56, 189, 248, 0.22);
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-dark);
+            color: #e2e8f0;
+            overflow: hidden;
+            user-select: none;
+        }
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        /* Custom Range Sliders per interfaccia PACS Medicale */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 6px;
+            background: #1e293b;
+            border-radius: 999px;
+            outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #38bdf8;
+            border: 2px solid #0f172a;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
+            transition: transform 0.12s ease, background-color 0.12s ease;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.18);
+            background: #7dd3fc;
+        }
+        input[type="range"].amber-slider::-webkit-slider-thumb {
+            background: #f59e0b;
+            box-shadow: 0 0 10px rgba(245, 158, 11, 0.6);
+        }
+        input[type="range"].emerald-slider::-webkit-slider-thumb {
+            background: #10b981;
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
+        }
+        /* Scrollbar sottile */
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #090d16;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1e293b;
+            border-radius: 999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #38bdf8;
+        }
+        .glass-panel {
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(148, 163, 184, 0.14);
+        }
+        .active-preset {
+            border-color: #38bdf8 !important;
+            background: rgba(56, 189, 248, 0.15) !important;
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.2);
+        }
+        .mpr-canvas-container {
+            position: relative;
+            background: #000;
+            border: 1px solid #1e293b;
+            border-radius: 0.5rem;
+            overflow: hidden;
+        }
+        .mpr-canvas-container:hover {
+            border-color: #38bdf8;
+        }
+        .grid-bg {
+            background-image: 
+                radial-gradient(circle at 50% 45%, rgba(14, 165, 233, 0.10) 0%, transparent 65%),
+                linear-gradient(to right, rgba(30, 41, 59, 0.22) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(30, 41, 59, 0.22) 1px, transparent 1px);
+            background-size: 100% 100%, 28px 28px, 28px 28px;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col overflow-hidden">
+
+    <!-- HEADER BAR -->
+    <header class="h-14 glass-panel border-b border-slate-800/80 px-4 flex items-center justify-between z-30 shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-sky-400 to-blue-700 flex items-center justify-center shadow-lg shadow-sky-500/20">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5"/>
+                </svg>
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="font-bold text-base tracking-tight text-white">NeuroVoxel <span class="text-sky-400">3D</span></h1>
+                    <span class="text-[10px] mono uppercase px-2 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30 font-semibold">WebGL2 Raymarcher</span>
+                </div>
+                <p class="text-[11px] text-slate-400 hidden sm:block">Visualizzatore Volumetrico TAC DICOM • 100% Locale nel Browser</p>
+            </div>
+        </div>
+
+        <!-- AZIONI CARICAMENTO FILE -->
+        <div class="flex items-center gap-2.5">
+            <!-- Input Cartella DICOM -->
+            <input type="file" id="folderInput" webkitdirectory directory multiple class="hidden" />
+            <!-- Input File Multipli DICOM -->
+            <input type="file" id="filesInput" multiple accept=".dcm,application/dicom,*" class="hidden" />
+
+            <button onclick="document.getElementById('folderInput').click()" class="px-3.5 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-semibold text-xs flex items-center gap-2 shadow-lg shadow-sky-500/25 transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                </svg>
+                <span>Carica Cartella DICOM</span>
+            </button>
+
+            <button onclick="document.getElementById('filesInput').click()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium text-xs flex items-center gap-1.5 transition">
+                <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                <span class="hidden md:inline">Seleziona File .DCM</span>
+            </button>
+
+            <button id="btnDemoSkull" onclick="generateProceduralPhantom()" class="px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-medium text-xs flex items-center gap-1.5 transition" title="Genera un Teschio TAC Sintetico ad Alta Risoluzione in Unità Hounsfield">
+                <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+                <span class="hidden lg:inline">Teschio Demo 3D</span>
+            </button>
+
+            <div class="h-5 w-[1px] bg-slate-800 mx-1 hidden sm:block"></div>
+
+            <button onclick="captureScreenshot()" class="p-2 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700 transition" title="Salva Istantanea PNG">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN WORKSPACE -->
+    <div class="flex-1 flex overflow-hidden relative">
+
+        <!-- LEFT SIDEBAR: PRESETS, TISSUE TRANSFER FUNCTION & SHADING -->
+        <aside class="w-80 glass-panel border-r border-slate-800/80 flex flex-col z-20 overflow-y-auto shrink-0">
+            
+            <!-- METADATA SERIE CARICATA -->
+            <div class="p-3.5 border-b border-slate-800/80 bg-slate-900/40">
+                <div class="flex items-center justify-between mb-1.5">
+                    <span class="text-[11px] font-semibold uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        Volume Attivo
+                    </span>
+                    <span id="metaModality" class="text-[11px] mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">CT • HU</span>
+                </div>
+                <div id="metaTitle" class="text-xs font-semibold text-white truncate">Teschio Demo Sintetico (HR-CT)</div>
+                <div class="grid grid-cols-3 gap-1.5 mt-2.5 text-[11px]">
+                    <div class="bg-slate-950/70 p-1.5 rounded border border-slate-800/80">
+                        <div class="text-slate-500 text-[10px]">Matrice</div>
+                        <div id="metaDims" class="mono font-medium text-slate-200">128×128×128</div>
+                    </div>
+                    <div class="bg-slate-950/70 p-1.5 rounded border border-slate-800/80">
+                        <div class="text-slate-500 text-[10px]">Spaziatura</div>
+                        <div id="metaSpacing" class="mono font-medium text-slate-200">1.5×1.5 mm</div>
+                    </div>
+                    <div class="bg-slate-950/70 p-1.5 rounded border border-slate-800/80">
+                        <div class="text-slate-500 text-[10px]">Range HU</div>
+                        <div id="metaHURange" class="mono font-medium text-sky-300">-1000..+2400</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PRESET TESSUTI & MODALITÀ RENDER -->
+            <div class="p-4 border-b border-slate-800/80">
+                <div class="flex items-center justify-between mb-2.5">
+                    <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-300">1. Preset Anatomici 3D</h2>
+                    <span class="text-[10px] text-slate-400">Hounsfield LUT</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="applyPreset('bone')" id="preset-bone" class="preset-btn active-preset p-2.5 rounded-lg border border-slate-700/80 bg-slate-900/60 hover:bg-slate-800/70 text-left transition">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-semibold text-amber-200">💀 Teschio Puro</span>
+                        </div>
+                        <p class="text-[10px] text-slate-400 mt-0.5">Osso corticale & denti (&gt;220 HU)</p>
+                    </button>
+
+                    <button onclick="applyPreset('hybrid')" id="preset-hybrid" class="preset-btn p-2.5 rounded-lg border border-slate-700/80 bg-slate-900/60 hover:bg-slate-800/70 text-left transition">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-semibold text-rose-300">🧬 Osso + Pelle</span>
+                        </div>
+                        <p class="text-[10px] text-slate-400 mt-0.5">Tessuti molli semitrasparenti</p>
+                    </button>
+
+                    <button onclick="applyPreset('angio')" id="preset-angio" class="preset-btn p-2.5 rounded-lg border border-slate-700/80 bg-slate-900/60 hover:bg-slate-800/70 text-left transition">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-semibold text-red-400">🩸 Alta Densità</span>
+                        </div>
+                        <p class="text-[10px] text-slate-400 mt-0.5">Smalto, rocca petrosa, MDC</p>
+                    </button>
+
+                    <button onclick="applyPreset('mip')" id="preset-mip" class="preset-btn p-2.5 rounded-lg border border-slate-700/80 bg-slate-900/60 hover:bg-slate-800/70 text-left transition">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-semibold text-sky-300">☢️ Lastra MIP</span>
+                        </div>
+                        <p class="text-[10px] text-slate-400 mt-0.5">Proiezione Massima Intensità</p>
+                    </button>
+                </div>
+            </div>
+
+            <!-- CONTROLLI DENSITÀ HOUNSFIELD & TRASPARENZA TESSUTI -->
+            <div class="p-4 border-b border-slate-800/80 space-y-3.5">
+                <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-300">2. Trasparenza & Soglie Tessuti</h2>
+
+                <!-- Soglia Osso (HU) -->
+                <div>
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-slate-300 font-medium">Soglia Osso (Iso-HU)</span>
+                        <span id="valBoneThresh" class="mono text-amber-400 font-semibold">230 HU</span>
+                    </div>
+                    <input type="range" id="sliderBoneThresh" min="-200" max="1200" value="230" step="5" class="amber-slider" oninput="updateTransferParams()">
+                    <div class="flex justify-between text-[10px] text-slate-500 mt-0.5">
+                        <span>Cartilagine (-100)</span>
+                        <span>Osso (250)</span>
+                        <span>Smalto (1000+)</span>
+                    </div>
+                </div>
+
+                <!-- Morbidezza / Finestra Osso -->
+                <div>
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-slate-300 font-medium">Contrasto / Durezza Osso</span>
+                        <span id="valBoneSharp" class="mono text-sky-300">180 HU</span>
+                    </div>
+                    <input type="range" id="sliderBoneSharp" min="20" max="600" value="180" step="5" oninput="updateTransferParams()">
+                </div>
+
+                <!-- Trasparenza Tessuti Molli / Pelle -->
+                <div>
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-slate-300 font-medium">Opacità Tessuti Molli / Cute</span>
+                        <span id="valSoftOpacity" class="mono text-rose-400 font-semibold">0%</span>
+                    </div>
+                    <input type="range" id="sliderSoftOpacity" min="0" max="100" value="0" step="1" oninput="updateTransferParams()">
+                    <p class="text-[10px] text-slate-500 mt-0.5">Mostra muscoli e cute (-300 a +120 HU) come velo fantasma</p>
+                </div>
+
+                <!-- Opacità Globale Volume -->
+                <div>
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-slate-300 font-medium">Densità Globale Volume</span>
+                        <span id="valGlobalAlpha" class="mono text-sky-300">95%</span>
+                    </div>
+                    <input type="range" id="sliderGlobalAlpha" min="10" max="150" value="95" step="1" oninput="updateTransferParams()">
+                </div>
+            </div>
+
+            <!-- ILLUMINAZIONE 3D & QUALITÀ RAYMARCHING -->
+            <div class="p-4 space-y-3.5">
+                <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-300">3. Illuminazione & Qualità 3D</h2>
+
+                <!-- Specularità Phong -->
+                <div>
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-slate-300 font-medium">Riflesso Speculare (Lucentezza)</span>
+                        <span id="valSpecular" class="mono text-sky-300">65%</span>
+                    </div>
+                    <input type="range" id="sliderSpecular" min="0" max="100" value="65" step="1" oninput="updateTransferParams()">
+                </div>
+
+                <!-- Ombreggiatura / Contorni Gradienti -->
+                <div>
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-slate-300 font-medium">Incisione Anatomica (Shading)</span>
+                        <span id="valShade" class="mono text-sky-300">85%</span>
+                    </div>
+                    <input type="range" id="sliderShade" min="0" max="100" value="85" step="1" oninput="updateTransferParams()">
+                </div>
+
+                <!-- Risoluzione Campionamento Raggi -->
+                <div>
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-slate-300 font-medium">Passi Raymarching (Qualità)</span>
+                        <span id="valSteps" class="mono text-emerald-400">280 step</span>
+                    </div>
+                    <input type="range" id="sliderSteps" min="96" max="512" value="280" step="16" class="emerald-slider" oninput="updateTransferParams()">
+                </div>
+
+                <!-- Colore Osso Personalizzabile -->
+                <div class="pt-1 flex items-center justify-between">
+                    <span class="text-xs text-slate-300">Tonalità Osso</span>
+                    <div class="flex gap-1.5">
+                        <button onclick="setBoneTint(1.0, 0.96, 0.86)" class="w-6 h-6 rounded-full border-2 border-white/60 shadow" style="background: #fff4db;" title="Avorio Naturale"></button>
+                        <button onclick="setBoneTint(1.0, 1.0, 1.0)" class="w-6 h-6 rounded-full border border-slate-600" style="background: #ffffff;" title="Bianco Clinico"></button>
+                        <button onclick="setBoneTint(0.95, 0.82, 0.60)" class="w-6 h-6 rounded-full border border-slate-600" style="background: #f2d199;" title="Ambra Antico"></button>
+                        <button onclick="setBoneTint(0.70, 0.92, 1.0)" class="w-6 h-6 rounded-full border border-slate-600" style="background: #b3ebff;" title="Ciano Olografico"></button>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- CENTER VIEWPORT: 3D RAYMARCHING CANVAS + DRAG & DROP OVERLAY -->
+        <main id="viewportContainer" class="flex-1 relative grid-bg flex flex-col justify-between overflow-hidden">
+            
+            <!-- WebGL2 3D Canvas -->
+            <canvas id="glCanvas" class="w-full h-full block cursor-grab active:cursor-grabbing"></canvas>
+
+            <!-- TOP FLOATING HUD: ORIENTATION & QUICK TOOLS -->
+            <div class="absolute top-3.5 left-3.5 right-3.5 flex items-start justify-between pointer-events-none">
+                
+                <!-- Orientation badges -->
+                <div class="glass-panel px-3 py-2 rounded-xl pointer-events-auto flex items-center gap-2 shadow-lg">
+                    <span class="text-[11px] font-semibold text-slate-400 mr-1">Vista:</span>
+                    <button onclick="setCameraView('front')" class="px-2 py-1 text-xs rounded bg-slate-800/90 hover:bg-sky-500/20 hover:text-sky-300 border border-slate-700 transition">Frontale (Cor)</button>
+                    <button onclick="setCameraView('side')" class="px-2 py-1 text-xs rounded bg-slate-800/90 hover:bg-sky-500/20 hover:text-sky-300 border border-slate-700 transition">Profilo (Sag)</button>
+                    <button onclick="setCameraView('top')" class="px-2 py-1 text-xs rounded bg-slate-800/90 hover:bg-sky-500/20 hover:text-sky-300 border border-slate-700 transition">Assiale (Sup)</button>
+                    <button onclick="setCameraView('iso')" class="px-2 py-1 text-xs rounded bg-slate-800/90 hover:bg-sky-500/20 hover:text-sky-300 border border-slate-700 transition">3/4 Cranio</button>
+                    <div class="h-4 w-[1px] bg-slate-700 mx-0.5"></div>
+                    <button id="btnAutoRotate" onclick="toggleAutoRotate()" class="px-2.5 py-1 text-xs rounded bg-slate-800/90 hover:bg-amber-500/20 text-slate-300 border border-slate-700 flex items-center gap-1 transition">
+                        <span>🔄 Cinema</span>
+                    </button>
+                </div>
+
+                <!-- Overlay istruzioni interazione -->
+                <div class="glass-panel px-3 py-2 rounded-xl text-[11px] text-slate-300 hidden xl:flex items-center gap-3">
+                    <span>🖱️ <b>Trascina SX:</b> Ruota 3D</span>
+                    <span>🖱️ <b>Trascina DX / Shift:</b> Sposta</span>
+                    <span>⚙️ <b>Rotella:</b> Zoom</span>
+                </div>
+            </div>
+
+            <!-- LOADING / PARSING PROGRESS OVERLAY -->
+            <div id="loadingOverlay" class="hidden absolute inset-0 bg-slate-950/85 backdrop-blur-md z-40 flex flex-col items-center justify-center p-6">
+                <div class="w-14 h-14 border-4 border-sky-500/30 border-t-sky-400 rounded-full animate-spin mb-4"></div>
+                <h3 id="loadingTitle" class="text-base font-bold text-white mb-1">Lettura Serie DICOM in corso...</h3>
+                <p id="loadingSub" class="text-xs text-slate-400 mono mb-4">Ordinamento fette e calcolo unità Hounsfield</p>
+                <div class="w-72 h-2 bg-slate-800 rounded-full overflow-hidden">
+                    <div id="loadingBar" class="h-full bg-gradient-to-r from-sky-400 to-blue-500 w-0 transition-all duration-150"></div>
+                </div>
+            </div>
+
+            <!-- DRAG & DROP ZONE OVERLAY -->
+            <div id="dropOverlay" class="hidden absolute inset-4 rounded-2xl border-2 border-dashed border-sky-400 bg-sky-950/60 backdrop-blur-sm z-40 flex flex-col items-center justify-center pointer-events-none">
+                <svg class="w-16 h-16 text-sky-400 mb-3 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                </svg>
+                <p class="text-lg font-bold text-white">Rilascia qui la cartella o i file DICOM (.dcm)</p>
+                <p class="text-xs text-sky-300 mt-1">Ricostruzione 3D automatica con calcolo Hounsfield Units</p>
+            </div>
+
+            <!-- TOAST / STATUS MESSAGE -->
+            <div id="statusToast" class="absolute bottom-4 left-4 glass-panel px-3.5 py-2 rounded-xl border border-sky-500/30 text-xs text-slate-200 flex items-center gap-2 shadow-lg pointer-events-none transition-opacity duration-300">
+                <span class="w-2 h-2 rounded-full bg-sky-400"></span>
+                <span id="statusText">Pronto • Trascina una cartella DICOM o esplora il Teschio 3D</span>
+            </div>
+        </main>
+
+        <!-- RIGHT SIDEBAR: BISTURI 3D (CLIPPING PLANES) & SINCRONIZZAZIONE MPR 2D -->
+        <aside class="w-80 glass-panel border-l border-slate-800/80 flex flex-col z-20 overflow-y-auto shrink-0">
+            
+            <!-- AFFETTAMENTO LIBERO 3D (CLIPPING BOX) -->
+            <div class="p-4 border-b border-slate-800/80 space-y-3">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-xs font-semibold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z"/>
+                        </svg>
+                        4. Affettamento Libero 3D
+                    </h2>
+                    <button onclick="resetClipping()" class="text-[11px] text-sky-400 hover:text-sky-300 underline">Reset Tagli</button>
+                </div>
+                <p class="text-[11px] text-slate-400">Taglia il volume 3D lungo i 3 piani anatomici per ispezionare l'interno della scatola cranica e dei seni paranasali.</p>
+
+                <!-- Asse X: Sagittale (Destra / Sinistra) -->
+                <div class="bg-slate-900/70 p-2.5 rounded-lg border border-slate-800">
+                    <div class="flex justify-between text-[11px] font-medium mb-1">
+                        <span class="text-sky-300">Asse X • Sagittale (DX ↔ SX)</span>
+                        <span id="lblClipX" class="mono text-slate-400">0% - 100%</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="range" id="clipXMin" min="0" max="100" value="0" oninput="updateClipping()">
+                        <input type="range" id="clipXMax" min="0" max="100" value="100" oninput="updateClipping()">
+                    </div>
+                </div>
+
+                <!-- Asse Y: Coronale (Anteriore / Posteriore) -->
+                <div class="bg-slate-900/70 p-2.5 rounded-lg border border-slate-800">
+                    <div class="flex justify-between text-[11px] font-medium mb-1">
+                        <span class="text-emerald-300">Asse Y • Coronale (Ant ↔ Post)</span>
+                        <span id="lblClipY" class="mono text-slate-400">0% - 100%</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="range" id="clipYMin" min="0" max="100" value="0" oninput="updateClipping()">
+                        <input type="range" id="clipYMax" min="0" max="100" value="100" oninput="updateClipping()">
+                    </div>
+                </div>
+
+                <!-- Asse Z: Assiale (Inferiore / Superiore) -->
+                <div class="bg-slate-900/70 p-2.5 rounded-lg border border-slate-800">
+                    <div class="flex justify-between text-[11px] font-medium mb-1">
+                        <span class="text-amber-300">Asse Z • Assiale (Inf ↔ Sup)</span>
+                        <span id="lblClipZ" class="mono text-slate-400">0% - 100%</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="range" id="clipZMin" min="0" max="100" value="0" oninput="updateClipping()">
+                        <input type="range" id="clipZMax" min="0" max="100" value="100" oninput="updateClipping()">
+                    </div>
+                </div>
+            </div>
+
+            <!-- RICOSTRUZIONE MULTIPLANARE 2D (MPR) CON SONDA HU -->
+            <div class="p-4 flex-1 flex flex-col justify-between space-y-3">
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-300">5. Fette TAC 2D (MPR)</h2>
+                        <span id="huProbeValue" class="text-[11px] mono px-2 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30">HU: --</span>
+                    </div>
+                    <p class="text-[10px] text-slate-400 mb-2.5">Scorri le fette o passa il mouse per leggere la densità radiologica (HU).</p>
+
+                    <!-- Assiale (Z) -->
+                    <div class="mb-2.5">
+                        <div class="flex justify-between text-[11px] mb-1">
+                            <span class="text-amber-300 font-medium">Assiale (Z)</span>
+                            <span id="lblSliceZ" class="mono text-slate-400">64 / 128</span>
+                        </div>
+                        <div class="flex gap-2 items-center">
+                            <div class="mpr-canvas-container w-24 h-24 shrink-0">
+                                <canvas id="canvasAxial" width="128" height="128" class="w-full h-full"></canvas>
+                            </div>
+                            <div class="flex-1 space-y-1.5">
+                                <input type="range" id="sliceZ" min="0" max="127" value="64" class="amber-slider" oninput="updateMPRViews()">
+                                <button onclick="syncClipToMPR('z')" class="w-full py-1 px-2 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 border border-slate-700 transition">
+                                    ✂️ Taglia 3D a questa quota Z
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Coronale (Y) -->
+                    <div class="mb-2.5">
+                        <div class="flex justify-between text-[11px] mb-1">
+                            <span class="text-emerald-300 font-medium">Coronale (Y)</span>
+                            <span id="lblSliceY" class="mono text-slate-400">64 / 128</span>
+                        </div>
+                        <div class="flex gap-2 items-center">
+                            <div class="mpr-canvas-container w-24 h-24 shrink-0">
+                                <canvas id="canvasCoronal" width="128" height="128" class="w-full h-full"></canvas>
+                            </div>
+                            <div class="flex-1 space-y-1.5">
+                                <input type="range" id="sliceY" min="0" max="127" value="64" class="emerald-slider" oninput="updateMPRViews()">
+                                <button onclick="syncClipToMPR('y')" class="w-full py-1 px-2 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 border border-slate-700 transition">
+                                    ✂️ Taglia 3D a questa quota Y
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sagittale (X) -->
+                    <div>
+                        <div class="flex justify-between text-[11px] mb-1">
+                            <span class="text-sky-300 font-medium">Sagittale (X)</span>
+                            <span id="lblSliceX" class="mono text-slate-400">64 / 128</span>
+                        </div>
+                        <div class="flex gap-2 items-center">
+                            <div class="mpr-canvas-container w-24 h-24 shrink-0">
+                                <canvas id="canvasSagittal" width="128" height="128" class="w-full h-full"></canvas>
+                            </div>
+                            <div class="flex-1 space-y-1.5">
+                                <input type="range" id="sliceX" min="0" max="127" value="64" oninput="updateMPRViews()">
+                                <button onclick="syncClipToMPR('x')" class="w-full py-1 px-2 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 border border-slate-700 transition">
+                                    ✂️ Taglia 3D a questa quota X
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Finestra Radiologica 2D (Window/Level) -->
+                <div class="pt-2 border-t border-slate-800/80">
+                    <div class="flex justify-between text-[10px] text-slate-400 mb-1">
+                        <span>Finestra 2D (WL/WW):</span>
+                        <div class="flex gap-1">
+                            <button onclick="set2DWindow(400, 1800)" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200">Osso</button>
+                            <button onclick="set2DWindow(40, 400)" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200">Tessuti</button>
+                            <button onclick="set2DWindow(-500, 1500)" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200">Seni/Aria</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- SHADERS GLSL WEBGL2 PER VOLUME RAYMARCHING DIRETTO IN HOUNSFIELD UNITS     -->
+    <!-- ========================================================================= -->
+    <script id="vs-raymarch" type="x-shader/x-vertex">#version 300 es
+        precision highp float;
+        in vec3 aPosition;
+        uniform mat4 uModelViewProjection;
+        out vec3 vPosObj;
+
+        void main() {
+            vPosObj = aPosition; // Coordinate nel box [-0.5, 0.5]^3
+            gl_Position = uModelViewProjection * vec4(aPosition, 1.0);
+        }
+    </script>
+
+    <script id="fs-raymarch" type="x-shader/x-fragment">#version 300 es
+        precision highp float;
+        precision highp sampler3D;
+
+        in vec3 vPosObj;
+        out vec4 fragColor;
+
+        uniform sampler3D uVolumeTex;
+        uniform vec3 uCamPosObj;
+        uniform vec3 uVolumeScale;     // Proporzioni fisiche (es. mm)
+        uniform vec3 uClipMin;         // [0..1]
+        uniform vec3 uClipMax;         // [0..1]
+
+        // Parametri Funzione di Trasferimento Hounsfield
+        uniform float uBoneThreshold;  // es. 230 HU
+        uniform float uBoneSharpness;  // es. 180 HU
+        uniform float uSoftOpacity;    // [0..1]
+        uniform float uGlobalAlpha;    // [0.1..1.5]
+        uniform float uSpecular;       // [0..1]
+        uniform float uShadeStrength;  // [0..1]
+        uniform int uSteps;            // [96..512]
+        uniform int uRenderMode;       // 0 = Phong Volume, 1 = MIP (Raggi X)
+        uniform vec3 uBoneTint;        // Colore osso primario
+
+        // Converte il valore normalizzato [0..1] della texture 3D in Hounsfield Units [-1024..+3071]
+        float sampleHU(vec3 uvw) {
+            float normVal = texture(uVolumeTex, uvw).r;
+            return normVal * 4095.0 - 1024.0;
+        }
+
+        // Calcolo della normale tramite differenze centrali nel campo HU
+        vec3 computeNormal(vec3 uvw, float eps) {
+            float dx = sampleHU(uvw + vec3(eps, 0.0, 0.0)) - sampleHU(uvw - vec3(eps, 0.0, 0.0));
+            float dy = sampleHU(uvw + vec3(0.0, eps, 0.0)) - sampleHU(uvw - vec3(0.0, eps, 0.0));
+            float dz = sampleHU(uvw + vec3(0.0, 0.0, eps)) - sampleHU(uvw - vec3(0.0, 0.0, eps));
+            return normalize(vec3(dx, dy, dz) + 1e-5);
+        }
+
+        // Intersezione Raggio - AABB (Axis-Aligned Bounding Box)
+        vec2 intersectBox(vec3 orig, vec3 dir, vec3 boxMin, vec3 boxMax) {
+            vec3 invDir = 1.0 / dir;
+            vec3 tminTmp = (boxMin - orig) * invDir;
+            vec3 tmaxTmp = (boxMax - orig) * invDir;
+            vec3 tmin = min(tminTmp, tmaxTmp);
+            vec3 tmax = max(tminTmp, tmaxTmp);
+            float t0 = max(max(tmin.x, tmin.y), tmin.z);
+            float t1 = min(min(tmax.x, tmax.y), tmax.z);
+            return vec2(t0, t1);
+        }
+
+        // Hash veloce per jittering stocastico (elimina gli artefatti "wood-grain" da slicing)
+        float hash12(vec2 p) {
+            vec3 p3  = fract(vec3(p.xyx) * .1031);
+            p3 += dot(p3, p3.yzx + 33.33);
+            return fract((p3.x + p3.y) * p3.z);
+        }
+
+        void main() {
+            vec3 rayDir = normalize(vPosObj - uCamPosObj);
+
+            // Convertiamo il clipping [0..1] nello spazio oggetto [-0.5, +0.5] scalato
+            vec3 boxMin = (uClipMin - 0.5) * uVolumeScale;
+            vec3 boxMax = (uClipMax - 0.5) * uVolumeScale;
+
+            vec2 tHit = intersectBox(uCamPosObj, rayDir, boxMin, boxMax);
+            if (tHit.x > tHit.y || tHit.y < 0.0) {
+                discard;
+            }
+            tHit.x = max(tHit.x, 0.0);
+
+            // Lunghezza massima diagonale del volume
+            float maxDist = length(uVolumeScale);
+            float stepSize = maxDist / float(uSteps);
+
+            // Jittering del punto di partenza per levigare le superfici ossee
+            float jitter = hash12(gl_FragCoord.xy) * stepSize;
+            float t = tHit.x + jitter;
+
+            vec4 accum = vec4(0.0);
+            float maxMIP = -1024.0;
+
+            vec3 lightDir = normalize(uCamPosObj + vec3(0.6, 0.8, 0.5));
+            vec3 viewDir = -rayDir;
+
+            for (int i = 0; i < 512; i++) {
+                if (i >= uSteps || t > tHit.y || accum.a >= 0.985) break;
+
+                vec3 posObj = uCamPosObj + rayDir * t;
+                // Rimappiamo da coordinate scalate a coordinate texture [0..1]^3
+                vec3 uvw = (posObj / uVolumeScale) + 0.5;
+
+                float hu = sampleHU(uvw);
+
+                if (uRenderMode == 1) {
+                    // Modalità MIP (Raggi X / Proiezione Massima Intensità)
+                    maxMIP = max(maxMIP, hu);
+                } else {
+                    // Modalità Volume Raymarching con Transfer Function Anatomica
+                    vec3 sampleCol = vec3(0.0);
+                    float sampleAlpha = 0.0;
+
+                    // 1. Contributo Tessuti Molli / Cute (-300 HU .. +140 HU)
+                    if (uSoftOpacity > 0.001 && hu > -320.0 && hu < uBoneThreshold) {
+                        float softFactor = smoothstep(-320.0, -40.0, hu) * (1.0 - smoothstep(80.0, uBoneThreshold, hu));
+                        sampleCol = mix(vec3(0.75, 0.35, 0.30), vec3(0.95, 0.68, 0.58), smoothstep(-150.0, 70.0, hu));
+                        sampleAlpha = softFactor * uSoftOpacity * 0.08;
+                    }
+
+                    // 2. Contributo Osso Trabecolare, Corticale & Smalto Dentale
+                    if (hu > (uBoneThreshold - uBoneSharpness * 0.5)) {
+                        float boneFactor = smoothstep(uBoneThreshold - uBoneSharpness * 0.5, uBoneThreshold + uBoneSharpness * 0.5, hu);
+                        
+                        // Gradiente cromatico da osso spugnoso caldo a corticale avorio fino a smalto brillante
+                        vec3 trabecularCol = uBoneTint * vec3(0.82, 0.65, 0.48);
+                        vec3 corticalCol   = uBoneTint;
+                        vec3 enamelCol     = vec3(1.0, 1.0, 1.0);
+
+                        vec3 bCol = mix(trabecularCol, corticalCol, smoothstep(uBoneThreshold - 50.0, uBoneThreshold + 350.0, hu));
+                        bCol = mix(bCol, enamelCol, smoothstep(800.0, 1600.0, hu));
+
+                        float bAlpha = boneFactor * 0.42 * uGlobalAlpha;
+
+                        // Illuminazione 3D Phong sul gradiente locale
+                        if (bAlpha > 0.01) {
+                            vec3 grad = computeNormal(uvw, 0.008);
+                            vec3 normal = -grad; // La normale punta verso l'esterno (densità decrescente)
+
+                            float diff = max(dot(normal, lightDir), 0.0);
+                            float rim  = pow(1.0 - max(dot(normal, viewDir), 0.0), 2.5);
+                            vec3 halfVec = normalize(lightDir + viewDir);
+                            float spec = pow(max(dot(normal, halfVec), 0.0), 28.0) * uSpecular;
+
+                            // Se siamo vicini al piano di taglio (Clipping Plane), evidenziamo la sezione interna
+                            vec3 distToClip = min( abs(uvw - uClipMin), abs(uvw - uClipMax) );
+                            float minClipDist = min(min(distToClip.x, distToClip.y), distToClip.z);
+                            float cutHighlight = 1.0 - smoothstep(0.0, 0.012, minClipDist);
+
+                            vec3 litBone = bCol * mix(1.0, (0.28 + 0.72 * diff + 0.18 * rim), uShadeStrength) + vec3(spec * 0.85);
+                            // Colore sezione ossea tagliata dal bisturi 3D
+                            litBone = mix(litBone, uBoneTint * 0.92, cutHighlight * 0.65);
+
+                            sampleCol = mix(sampleCol, litBone, boneFactor);
+                            sampleAlpha = max(sampleAlpha, bAlpha);
+                        }
+                    }
+
+                    // Correzione opacità rispetto al passo di integrazione
+                    if (sampleAlpha > 0.0005) {
+                        float alphaCorr = 1.0 - pow(1.0 - clamp(sampleAlpha, 0.0, 0.99), stepSize * 180.0);
+                        accum.rgb += (1.0 - accum.a) * sampleCol * alphaCorr;
+                        accum.a   += (1.0 - accum.a) * alphaCorr;
+                    }
+                }
+
+                t += stepSize;
+            }
+
+            if (uRenderMode == 1) {
+                // Output MIP Radiografico
+                float mipNorm = smoothstep(uBoneThreshold - 300.0, uBoneThreshold + 1100.0, maxMIP);
+                vec3 xrayCol = mix(vec3(0.04, 0.09, 0.16), vec3(0.88, 0.96, 1.0), mipNorm);
+                fragColor = vec4(xrayCol * mipNorm, mipNorm * 0.95);
+            } else {
+                if (accum.a < 0.005) discard;
+                // Leggero tone-mapping e gamma correction
+                vec3 finalRGB = pow(clamp(accum.rgb, 0.0, 1.0), vec3(0.95));
+                fragColor = vec4(finalRGB, accum.a);
+            }
+        }
+    </script>
+
+    <!-- ========================================================================= -->
+    <!-- LOGICA APPLICATIVA: PARSER DICOM + GENERATORE TESCHIO + WEBGL2 + MPR 2D   -->
+    <!-- ========================================================================= -->
+    <script>
+        // --- STATO GLOBALE DEL VOLUME ---
+        const VolumeState = {
+            width: 128,
+            height: 128,
+            depth: 128,
+            spacingX: 1.5,
+            spacingY: 1.5,
+            spacingZ: 1.5,
+            huData: null,       // Int16Array con valori in Unità Hounsfield [-1024..+3071]
+            texData: null,      // Uint8Array o Float32Array normalizzato per WebGL2
+            minHU: -1024,
+            maxHU: 2400,
+            seriesTitle: "Teschio Demo Sintetico (HR-CT)",
+            modality: "CT • HU",
+            // Parametri Transfer Function
+            boneThreshold: 230,
+            boneSharpness: 180,
+            softOpacity: 0.0,
+            globalAlpha: 0.95,
+            specular: 0.65,
+            shadeStrength: 0.85,
+            steps: 280,
+            renderMode: 0,      // 0 = Volume 3D Phong, 1 = MIP
+            boneTint: [1.0, 0.96, 0.86],
+            // Clipping Box [0..1]
+            clipMin: [0.0, 0.0, 0.0],
+            clipMax: [1.0, 1.0, 1.0],
+            // Finestra 2D MPR
+            winCenter: 400,
+            winWidth: 1800
+        };
+
+        // --- STATO TELECAMERA ORBITALE 3D ---
+        const Camera = {
+            yaw: 0.42,          // Rotazione orizzontale (radianti)
+            pitch: 0.22,        // Elevazione verticale (radianti)
+            distance: 2.05,     // Distanza dal centro
+            panX: 0.0,
+            panY: 0.0,
+            autoRotate: false,
+            isDragging: false,
+            dragMode: 'orbit',  // 'orbit' o 'pan'
+            lastX: 0,
+            lastY: 0
+        };
+
+        // --- RIFERIMENTI WEBGL2 ---
+        let gl = null;
+        let program = null;
+        let vao = null;
+        let volumeTexture = null;
+        let uniforms = {};
+
+        // =========================================================================
+        // 1. INIZIALIZZAZIONE WEBGL2 RAYMARCHER
+        // =========================================================================
+        function initWebGL() {
+            const canvas = document.getElementById('glCanvas');
+            gl = canvas.getContext('webgl2', { antialias: true, preserveDrawingBuffer: true });
+            if (!gl) {
+                showToast("Errore: Il tuo browser non supporta WebGL2.", true);
+                return;
+            }
+
+            // Compilazione Shaders
+            const vsSource = document.getElementById('vs-raymarch').textContent;
+            const fsSource = document.getElementById('fs-raymarch').textContent;
+            const vs = compileShader(gl, gl.VERTEX_SHADER, vsSource);
+            const fs = compileShader(gl, gl.FRAGMENT_SHADER, fsSource);
+
+            program = gl.createProgram();
+            gl.attachShader(program, vs);
+            gl.attachShader(program, fs);
+            gl.linkProgram(program);
+
+            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                console.error("Errore link shader:", gl.getProgramInfoLog(program));
+                return;
+            }
+
+            // Geometria Cubo Unitario [-0.5, 0.5]^3
+            const vertices = new Float32Array([
+                -0.5, -0.5, -0.5,   0.5, -0.5, -0.5,   0.5,  0.5, -0.5,  -0.5,  0.5, -0.5,
+                -0.5, -0.5,  0.5,   0.5, -0.5,  0.5,   0.5,  0.5,  0.5,  -0.5,  0.5,  0.5
+            ]);
+            const indices = new Uint16Array([
+                0, 1, 2,  0, 2, 3, // Back
+                4, 6, 5,  4, 7, 6, // Front
+                0, 3, 7,  0, 7, 4, // Left
+                1, 5, 6,  1, 6, 2, // Right
+                3, 2, 6,  3, 6, 7, // Top
+                0, 4, 5,  0, 5, 1  // Bottom
+            ]);
+
+            vao = gl.createVertexArray();
+            gl.bindVertexArray(vao);
+
+            const vbo = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+            gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+            const posLoc = gl.getAttribLocation(program, 'aPosition');
+            gl.enableVertexAttribArray(posLoc);
+            gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
+
+            const ebo = gl.createBuffer();
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+
+            gl.bindVertexArray(null);
+
+            // Cache Uniform Locations
+            const uNames = [
+                'uModelViewProjection', 'uVolumeTex', 'uCamPosObj', 'uVolumeScale',
+                'uClipMin', 'uClipMax', 'uBoneThreshold', 'uBoneSharpness',
+                'uSoftOpacity', 'uGlobalAlpha', 'uSpecular', 'uShadeStrength',
+                'uSteps', 'uRenderMode', 'uBoneTint'
+            ];
+            uNames.forEach(name => {
+                uniforms[name] = gl.getUniformLocation(program, name);
+            });
+
+            setupMouseAndTouchControls(canvas);
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+        }
+
+        function compileShader(gl, type, source) {
+            const s = gl.createShader(type);
+            gl.shaderSource(s, source);
+            gl.compileShader(s);
+            if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+                console.error("Shader Compile Error:", gl.getShaderInfoLog(s));
+            }
+            return s;
+        }
+
+        function uploadVolumeToGPU() {
+            if (!gl || !VolumeState.huData) return;
+
+            const W = VolumeState.width;
+            const H = VolumeState.height;
+            const D = VolumeState.depth;
+            const total = W * H * D;
+
+            // Normalizziamo i valori HU [-1024..+3071] in Uint8 [0..255] o R8 con interpolazione lineare
+            // Per massima compatibilità su tutte le GPU WebGL2 (incluso mobile/macOS), R8 con LINEAR filter è nativamente garantito
+            const uint8Vol = new Uint8Array(total);
+            const hu = VolumeState.huData;
+            for (let i = 0; i < total; i++) {
+                let norm = (hu[i] + 1024.0) / 4095.0;
+                if (norm < 0) norm = 0;
+                else if (norm > 1) norm = 1;
+                uint8Vol[i] = (norm * 255) | 0;
+            }
+
+            if (volumeTexture) gl.deleteTexture(volumeTexture);
+            volumeTexture = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_3D, volumeTexture);
+            gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+            gl.texImage3D(
+                gl.TEXTURE_3D,
+                0,
+                gl.R8,
+                W, H, D,
+                0,
+                gl.RED,
+                gl.UNSIGNED_BYTE,
+                uint8Vol
+            );
+
+            // Aggiorna UI e slider MPR
+            document.getElementById('metaTitle').textContent = VolumeState.seriesTitle;
+            document.getElementById('metaModality').textContent = VolumeState.modality;
+            document.getElementById('metaDims').textContent = `${W}×${H}×${D}`;
+            document.getElementById('metaSpacing').textContent = `${VolumeState.spacingX.toFixed(1)}×${VolumeState.spacingZ.toFixed(1)}mm`;
+            document.getElementById('metaHURange').textContent = `${VolumeState.minHU}..+${VolumeState.maxHU}`;
+
+            const sx = document.getElementById('sliceX');
+            const sy = document.getElementById('sliceY');
+            const sz = document.getElementById('sliceZ');
+            sx.max = W - 1; sx.value = Math.floor(W / 2);
+            sy.max = H - 1; sy.value = Math.floor(H / 2);
+            sz.max = D - 1; sz.value = Math.floor(D / 2);
+
+            updateMPRViews();
+        }
+
+        // =========================================================================
+        // 2. GENERATORE PROCEDURALE TESCHIO TAC 3D (IN UNITÀ HOUNSFIELD REALI)
+        // =========================================================================
+        function generateProceduralPhantom() {
+            const overlay = document.getElementById('loadingOverlay');
+            overlay.classList.remove('hidden');
+            document.getElementById('loadingTitle').textContent = "Generazione Teschio TAC Sintetico 3D...";
+            document.getElementById('loadingSub').textContent = "Costruzione calotta cranica, orbite, zigomi, mandibola e denti in Unità Hounsfield";
+            document.getElementById('loadingBar').style.width = "65%";
+
+            setTimeout(() => {
+                const W = 128, H = 128, D = 128;
+                const hu = new Int16Array(W * H * D);
+                hu.fill(-1000); // Aria radiologica (-1000 HU)
+
+                // Costruiamo un teschio umano anatomicamente ricco con coordinate normalizzate [-1, +1]
+                // X: Destra/Sinistra, Y: Anteriore(-)/Posteriore(+), Z: Inferiore(-)/Superiore(+)
+                for (let z = 0; z < D; z++) {
+                    const zn = (z / (D - 1)) * 2.0 - 1.0;
+                    for (let y = 0; y < H; y++) {
+                        const yn = (y / (H - 1)) * 2.0 - 1.0;
+                        for (let x = 0; x < W; x++) {
+                            const xn = (x / (W - 1)) * 2.0 - 1.0;
+
+                            let valHU = -1000;
+
+                            // 1. Neurocranio (Calotta ellissoidale superiore-posteriore)
+                            const cx = xn / 0.66;
+                            const cy = (yn - 0.08) / 0.78;
+                            const cz = (zn - 0.16) / 0.68;
+                            const dCranium = Math.sqrt(cx * cx + cy * cy + cz * cz);
+
+                            // 2. Massiccio Facciale / Mascella / Zigomi (anteriore-inferiore)
+                            const fx = xn / 0.50;
+                            const fy = (yn + 0.34) / 0.44;
+                            const fz = (zn + 0.25) / 0.48;
+                            const dFace = Math.sqrt(fx * fx + fy * fy + fz * fz);
+
+                            // 3. Mandibola (ramo e corpo mandibolare a U)
+                            const jawArc = Math.sqrt(xn * xn + (yn + 0.30) * (yn + 0.30));
+                            const dJaw = Math.max(Math.abs(jawArc - 0.38) - 0.07, Math.abs(zn + 0.56) - 0.15);
+
+                            // Unione morbida della testa per il profilo cutaneo esterno
+                            const skinField = Math.min(dCranium, dFace * 0.95);
+                            if (skinField < 1.05 || (dJaw < 0.06 && yn < 0.12)) {
+                                // Tessuto molle sottocutaneo e muscolare (-60 .. +55 HU)
+                                valHU = 35;
+                            }
+
+                            // Parenchima cerebrale dentro la scatola cranica (35 HU)
+                            if (dCranium < 0.85) {
+                                valHU = 38;
+                                // Ventricoli laterali (liquor 10 HU)
+                                if (Math.abs(xn) > 0.05 && Math.abs(xn) < 0.20 && Math.abs(yn - 0.05) < 0.25 && Math.abs(zn - 0.15) < 0.12) {
+                                    valHU = 8;
+                                }
+                            }
+
+                            // Guscio osseo della Calotta Cranica (Tavolato esterno, diploe, tavolato interno)
+                            if (dCranium >= 0.85 && dCranium <= 1.0) {
+                                const shellPos = (dCranium - 0.85) / 0.15; // 0..1
+                                const cortical = 1.0 - 4.0 * (shellPos - 0.5) * (shellPos - 0.5);
+                                valHU = Math.round(980 - cortical * 320); // Diploe ~660 HU, Corticale ~980 HU
+                            }
+
+                            // Struttura ossea facciale, arcate sopraccigliari e zigomatiche
+                            if (dFace < 0.98 && yn < 0.15 && zn < 0.18 && zn > -0.58) {
+                                if (dFace > 0.72) {
+                                    valHU = Math.max(valHU, 820);
+                                }
+                            }
+
+                            // Arcate Zigomatiche prominenti
+                            const zygX = (Math.abs(xn) - 0.48) / 0.12;
+                            const zygY = (yn + 0.18) / 0.28;
+                            const zygZ = (zn + 0.08) / 0.10;
+                            if (zygX * zygX + zygY * zygY + zygZ * zygZ < 1.0) {
+                                valHU = Math.max(valHU, 950);
+                            }
+
+                            // Mandibola Ossea Corticale Densa
+                            if (dJaw < 0.0 && yn < 0.10) {
+                                valHU = Math.max(valHU, 960);
+                            }
+                            // Ramo ascendente mandibolare
+                            if (Math.abs(Math.abs(xn) - 0.42) < 0.065 && yn > -0.18 && yn < 0.05 && zn > -0.55 && zn < -0.05) {
+                                valHU = Math.max(valHU, 920);
+                            }
+
+                            // CAVITÀ ORBITARIE (Scavate con aria/tessuto orbitario)
+                            const orbX = (Math.abs(xn) - 0.24) / 0.165;
+                            const orbY = (yn + 0.55) / 0.24;
+                            const orbZ = (zn - 0.02) / 0.155;
+                            const dOrbit = Math.sqrt(orbX * orbX + orbY * orbY + orbZ * orbZ);
+                            if (dOrbit < 1.0) {
+                                valHU = -920; // Cavità orbitaria aperta per risalto 3D
+                            } else if (dOrbit < 1.22 && yn < -0.35) {
+                                valHU = Math.max(valHU, 1040); // Rima orbitaria ossea spessa
+                            }
+
+                            // CAVITÀ NASALE PIRIFORME & SETTO OSSEO
+                            const noseX = xn / 0.11;
+                            const noseY = (yn + 0.58) / 0.25;
+                            const noseZ = (zn + 0.20) / 0.18;
+                            if (noseX * noseX + noseY * noseY + noseZ * noseZ < 1.0) {
+                                if (Math.abs(xn) < 0.018 && yn > -0.62) {
+                                    valHU = 720; // Setto nasale osseo (vomere/lamina perpendicolare)
+                                } else {
+                                    valHU = -980; // Aria cavità nasale
+                                }
+                            }
+
+                            // SENI MASCELLARI & FRONTALI (Aria pneumatizzata -950 HU)
+                            const sinX = (Math.abs(xn) - 0.23) / 0.13;
+                            const sinY = (yn + 0.42) / 0.16;
+                            const sinZ = (zn + 0.22) / 0.13;
+                            if (sinX * sinX + sinY * sinY + sinZ * sinZ < 1.0) {
+                                valHU = -960;
+                            }
+
+                            // ARCATA DENTARIA SUPERIORE E INFERIORE (Smalto ad altissima densità 1500-2100 HU)
+                            const toothRadius = Math.sqrt(xn * xn + (yn + 0.38) * (yn + 0.38));
+                            if (Math.abs(toothRadius - 0.33) < 0.045 && yn < -0.22 && Math.abs(zn + 0.38) < 0.075) {
+                                // Modulazione angolare per separare i singoli denti
+                                const angle = Math.atan2(yn + 0.38, xn);
+                                const toothGap = Math.sin(angle * 28.0);
+                                const archGap = Math.abs(zn + 0.38);
+                                if (toothGap > -0.55 && archGap > 0.012) {
+                                    valHU = 1750; // Smalto e dentina
+                                }
+                            }
+
+                            // FORAME MAGNO E RACHIDE CERVICALE C1-C2
+                            const spineR = Math.sqrt(xn * xn + (yn - 0.05) * (yn - 0.05));
+                            if (zn < -0.42 && spineR < 0.24 && spineR > 0.11) {
+                                // Anelli vertebrali cervicali
+                                if (Math.sin(zn * 32.0) > -0.3) {
+                                    valHU = 890;
+                                }
+                            }
+
+                            // Rumore quantico TC realistico (+/- 12 HU)
+                            const noise = ((Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453) % 1) * 18;
+                            hu[z * W * H + y * W + x] = Math.max(-1024, Math.min(3000, Math.round(valHU + noise)));
+                        }
+                    }
+                }
+
+                VolumeState.width = W;
+                VolumeState.height = H;
+                VolumeState.depth = D;
+                VolumeState.spacingX = 1.4;
+                VolumeState.spacingY = 1.4;
+                VolumeState.spacingZ = 1.4;
+                VolumeState.huData = hu;
+                VolumeState.minHU = -1024;
+                VolumeState.maxHU = 1950;
+                VolumeState.seriesTitle = "Teschio Demo Sintetico (HR-CT)";
+                VolumeState.modality = "CT • PHANTOM";
+
+                uploadVolumeToGPU();
+                overlay.classList.add('hidden');
+                showToast("Teschio 3D pronto! Ruota col mouse o usa gli slider per affettare il volume.");
+            }, 80);
+        }
+
+        // =========================================================================
+        // 3. PARSER DICOM MULTI-FILE NATIVO + DAIKON (SUPPORTA IMPLICIT/EXPLICIT LE)
+        // =========================================================================
+        document.getElementById('folderInput').addEventListener('change', (e) => {
+            if (e.target.files && e.target.files.length > 0) {
+                loadDicomFiles(Array.from(e.target.files));
+            }
+        });
+
+        document.getElementById('filesInput').addEventListener('change', (e) => {
+            if (e.target.files && e.target.files.length > 0) {
+                loadDicomFiles(Array.from(e.target.files));
+            }
+        });
+
+        // Gestione Drag & Drop sull'intera finestra
+        window.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            document.getElementById('dropOverlay').classList.remove('hidden');
+        });
+        window.addEventListener('dragleave', (e) => {
+            if (e.relatedTarget === null) {
+                document.getElementById('dropOverlay').classList.add('hidden');
+            }
+        });
+        window.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            document.getElementById('dropOverlay').classList.add('hidden');
+
+            const items = e.dataTransfer.items;
+            if (items && items.length > 0) {
+                const collectedFiles = [];
+                const traverseEntry = async (entry) => {
+                    if (!entry) return;
+                    if (entry.isFile) {
+                        const file = await new Promise((res) => entry.file(res));
+                        collectedFiles.push(file);
+                    } else if (entry.isDirectory) {
+                        const reader = entry.createReader();
+                        let batch;
+                        do {
+                            batch = await new Promise((res) => reader.readEntries(res));
+                            for (const child of batch) {
+                                await traverseEntry(child);
+                            }
+                        } while (batch.length > 0);
+                    }
+                };
+
+                const entries = [];
+                for (let i = 0; i < items.length; i++) {
+                    if (items[i].webkitGetAsEntry) {
+                        entries.push(items[i].webkitGetAsEntry());
+                    }
+                }
+
+                if (entries.length > 0) {
+                    for (const entry of entries) {
+                        await traverseEntry(entry);
+                    }
+                    if (collectedFiles.length > 0) {
+                        loadDicomFiles(collectedFiles);
+                        return;
+                    }
+                }
+            }
+
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                loadDicomFiles(Array.from(e.dataTransfer.files));
+            }
+        });
+
+        // Parser binario DICOM di fallback ultra-veloce per file CT non compressi
+        function parseDicomBufferFallback(arrayBuffer) {
+            const view = new DataView(arrayBuffer);
+            const len = view.byteLength;
+            if (len < 256) return null;
+
+            // Verifica preambolo 'DICM' a byte 128
+            let offset = 0;
+            const hasDICM = (
+                view.getUint8(128) === 0x44 && // D
+                view.getUint8(129) === 0x49 && // I
+                view.getUint8(130) === 0x43 && // C
+                view.getUint8(131) === 0x4D    // M
+            );
+            if (hasDICM) offset = 132;
+
+            let rows = 0, cols = 0, bitsAllocated = 16, pixelRepresentation = 1;
+            let rescaleSlope = 1.0, rescaleIntercept = 0.0;
+            let sliceLocation = null, instanceNumber = 0, zPos = null;
+            let pixelSpacingX = 1.0, pixelSpacingY = 1.0, sliceThickness = 1.0;
+            let seriesDesc = "";
+            let pixelDataOffset = -1;
+
+            const readAscii = (start, length) => {
+                let s = "";
+                for (let i = 0; i < length && (start + i) < len; i++) {
+                    const c = view.getUint8(start + i);
+                    if (c >= 32 && c <= 126) s += String.fromCharCode(c);
+                }
+                return s.trim();
+            };
+
+            const longVRs = new Set(["OB", "OW", "OF", "SQ", "UT", "UN"]);
+
+            while (offset + 8 < len) {
+                const group = view.getUint16(offset, true);
+                const element = view.getUint16(offset + 2, true);
+                const vr1 = String.fromCharCode(view.getUint8(offset + 4), view.getUint8(offset + 5));
+                const isExplicit = /^[A-Z]{2}$/.test(vr1);
+
+                let vl = 0;
+                let headerSize = 8;
+
+                if (isExplicit) {
+                    if (longVRs.has(vr1)) {
+                        vl = view.getUint32(offset + 8, true);
+                        headerSize = 12;
+                    } else {
+                        vl = view.getUint16(offset + 6, true);
+                        headerSize = 8;
+                    }
+                } else {
+                    vl = view.getUint32(offset + 4, true);
+                    headerSize = 8;
+                }
+
+                const valOffset = offset + headerSize;
+
+                // Tag PixelData (7FE0, 0010)
+                if (group === 0x7FE0 && element === 0x0010) {
+                    pixelDataOffset = valOffset;
+                    break;
+                }
+
+                if (vl === 0xFFFFFFFF || vl < 0 || valOffset + vl > len) {
+                    offset += 8;
+                    continue;
+                }
+
+                let seriesInstanceUID = "series_unknown";
+
+                if (group === 0x0008 && element === 0x103E) {
+                    seriesDesc = readAscii(valOffset, vl);
+                } else if (group === 0x0020 && element === 0x0013) {
+                    instanceNumber = parseInt(readAscii(valOffset, vl)) || 0;
+                } else if (group === 0x0020 && element === 0x0032) {
+                    const parts = readAscii(valOffset, vl).split('\\');
+                    if (parts.length >= 3) zPos = parseFloat(parts[2]);
+                } else if (group === 0x0020 && element === 0x1041) {
+                    sliceLocation = parseFloat(readAscii(valOffset, vl));
+                } else if (group === 0x0018 && element === 0x0050) {
+                    sliceThickness = parseFloat(readAscii(valOffset, vl)) || 1.0;
+                } else if (group === 0x0028 && element === 0x0010) {
+                    rows = view.getUint16(valOffset, true);
+                } else if (group === 0x0028 && element === 0x0011) {
+                    cols = view.getUint16(valOffset, true);
+                } else if (group === 0x0028 && element === 0x0030) {
+                    const sp = readAscii(valOffset, vl).split('\\');
+                    if (sp.length >= 2) {
+                        pixelSpacingY = parseFloat(sp[0]) || 1.0;
+                        pixelSpacingX = parseFloat(sp[1]) || 1.0;
+                    }
+                } else if (group === 0x0028 && element === 0x0100) {
+                    bitsAllocated = view.getUint16(valOffset, true);
+                } else if (group === 0x0028 && element === 0x0103) {
+                    pixelRepresentation = view.getUint16(valOffset, true);
+                } else if (group === 0x0028 && element === 0x1052) {
+                    rescaleIntercept = parseFloat(readAscii(valOffset, vl)) || 0.0;
+                } else if (group === 0x0028 && element === 0x1053) {
+                    rescaleSlope = parseFloat(readAscii(valOffset, vl)) || 1.0;
+                } else if (group === 0x0020 && element === 0x000E) {
+                    seriesInstanceUID = readAscii(valOffset, vl) || "series_unknown";
+                }
+
+                offset = valOffset + vl;
+            }
+
+            if (rows <= 0 || cols <= 0) return null;
+            const numPixels = rows * cols;
+            const bytesNeeded = numPixels * (bitsAllocated / 8);
+
+            if (pixelDataOffset < 0 || pixelDataOffset + bytesNeeded > len) {
+                // Se il tag PixelData era annidato, prendiamo gli ultimi rows*cols*2 byte del file
+                if (len >= bytesNeeded) {
+                    pixelDataOffset = len - bytesNeeded;
+                } else {
+                    return null;
+                }
+            }
+
+            const huSlice = new Int16Array(numPixels);
+            let pOff = pixelDataOffset;
+            for (let i = 0; i < numPixels; i++) {
+                let raw = (pixelRepresentation === 1)
+                    ? view.getInt16(pOff, true)
+                    : view.getUint16(pOff, true);
+                pOff += 2;
+                let hu = Math.round(raw * rescaleSlope + rescaleIntercept);
+                // Se l'immagine non aveva RescaleIntercept ma ha offset tipico CT +1024
+                if (rescaleIntercept === 0 && raw >= 0 && raw < 5000) {
+                    // Manteniamo il valore diretto
+                }
+                huSlice[i] = Math.max(-1024, Math.min(3071, hu));
+            }
+
+            return {
+                rows,
+                cols,
+                huSlice,
+                zKey: (zPos !== null && !isNaN(zPos)) ? zPos : ((sliceLocation !== null && !isNaN(sliceLocation)) ? sliceLocation : instanceNumber),
+                pixelSpacingX,
+                pixelSpacingY,
+                sliceThickness,
+                seriesDesc
+            };
+        }
+
+        async function loadDicomFiles(fileList) {
+            const candidateFiles = fileList.filter(f => {
+                const name = f.name.toLowerCase();
+                return !name.startsWith('.') && name !== 'dicomdir' && !name.endsWith('.xml') && !name.endsWith('.txt') && !name.endsWith('.jpg') && !name.endsWith('.png') && f.size > 1024;
+            });
+
+            if (candidateFiles.length === 0) {
+                showToast("Nessun file DICOM valido trovato nella selezione.", true);
+                return;
+            }
+
+            const overlay = document.getElementById('loadingOverlay');
+            const bar = document.getElementById('loadingBar');
+            const sub = document.getElementById('loadingSub');
+            overlay.classList.remove('hidden');
+            document.getElementById('loadingTitle').textContent = `Analisi di ${candidateFiles.length} file DICOM...`;
+
+            const parsedSlices = [];
+
+            for (let i = 0; i < candidateFiles.length; i++) {
+                const f = candidateFiles[i];
+                if (i % 8 === 0 || i === candidateFiles.length - 1) {
+                    const pct = Math.round(((i + 1) / candidateFiles.length) * 85);
+                    bar.style.width = `${pct}%`;
+                    sub.textContent = `Decodifica fetta ${i + 1} di ${candidateFiles.length} (${f.name})`;
+                    await new Promise(r => setTimeout(r, 0));
+                }
+
+                try {
+                    const buf = await f.arrayBuffer();
+                    let sliceObj = null;
+
+                    // 1. Tentativo con libreria Daikon
+                    if (window.daikon) {
+                        try {
+                            const dataView = new DataView(buf);
+                            const image = daikon.Series.parseImage(dataView);
+                            if (image && image.hasPixelData()) {
+                                const rows = image.getRows();
+                                const cols = image.getCols();
+                                const interpreted = image.getInterpretedData(false, false);
+                                if (rows && cols && interpreted && interpreted.length >= rows * cols) {
+                                    const huSlice = new Int16Array(rows * cols);
+                                    for (let p = 0; p < rows * cols; p++) {
+                                        huSlice[p] = Math.max(-1024, Math.min(3071, Math.round(interpreted[p])));
+                                    }
+                                    const pos = image.getImagePosition();
+                                    const sp = image.getPixelSpacing();
+                                    sliceObj = {
+                                        rows, cols, huSlice,
+                                        zKey: (pos && pos.length >= 3) ? pos[2] : (image.getSliceLocation() || image.getImageNumber() || i),
+                                        pixelSpacingX: (sp && sp.length >= 2) ? sp[1] : 1.0,
+                                        pixelSpacingY: (sp && sp.length >= 2) ? sp[0] : 1.0,
+                                        sliceThickness: image.getSliceThickness() || 1.0,
+                                        seriesDesc: image.getSeriesDescription() || f.name,
+                                        seriesUID: image.getSeriesInstanceUID() || "series_default"
+                                    };
+                                }
+                            }
+                        } catch (daikonErr) {}
+                    }
+
+                    // 2. Fallback binario diretto
+                    if (!sliceObj) {
+                        sliceObj = parseDicomBufferFallback(buf);
+                    }
+
+                    if (sliceObj && sliceObj.rows > 16 && sliceObj.cols > 16) {
+                        parsedSlices.push(sliceObj);
+                    }
+                } catch (err) {
+                    console.warn("File ignorato:", f.name, err);
+                }
+            }
+
+            if (parsedSlices.length === 0) {
+                overlay.classList.add('hidden');
+                showToast("Impossibile decodificare i pixel dai file selezionati.", true);
+                return;
+            }
+
+            // --- NUOVA LOGICA: SEPARAZIONE PER SERIES INSTANCE UID ---
+            const seriesMap = {};
+            parsedSlices.forEach(s => {
+                const uid = s.seriesUID || "unknown_series";
+                if (!seriesMap[uid]) {
+                    seriesMap[uid] = [];
+                }
+                seriesMap[uid].push(s);
+            });
+
+            // Troviamo la serie con il maggior numero di fette (di solito la TAC volumetrica principale)
+            let bestUID = Object.keys(seriesMap)[0];
+            let maxCount = seriesMap[bestUID].length;
+            
+            for (const uid in seriesMap) {
+                if (seriesMap[uid].length > maxCount) {
+                    maxCount = seriesMap[uid].length;
+                    bestUID = uid;
+                }
+            }
+
+            const validSlices = seriesMap[bestUID];
+            
+            // Notifica all'utente se sono state scartate altre serie secondarie (es. scout 2D)
+            if (Object.keys(seriesMap).length > 1) {
+                console.warn(`Rilevate ${Object.keys(seriesMap).length} serie distinte. Selezionata la serie principale con ${maxCount} fette (UID: ${bestUID}).`);
+            }
+
+            // Ordinamento rigoroso lungo l'asse Z spaziale
+            validSlices.sort((a, b) => a.zKey - b.zKey);
+
+            sub.textContent = `Costruzione Texture 3D (${validSlices.length} fette)...`;
+            bar.style.width = `95%`;
+            await new Promise(r => setTimeout(r, 20));
+
+            const origW = validSlices[0].cols;
+            const origH = validSlices[0].rows;
+            const origD = validSlices.length;
+
+            const targetW = Math.min(256, origW);
+            const targetH = Math.min(256, origH);
+            const targetD = Math.min(256, origD);
+
+            const volumeHU = new Int16Array(targetW * targetH * targetD);
+            let minH = 3071, maxH = -1024;
+
+            for (let z = 0; z < targetD; z++) {
+                const srcZ = Math.min(origD - 1, Math.floor((z / targetD) * origD));
+                const sliceData = validSlices[srcZ].huSlice;
+                for (let y = 0; y < targetH; y++) {
+                    const srcY = Math.min(origH - 1, Math.floor((y / targetH) * origH));
+                    for (let x = 0; x < targetW; x++) {
+                        const srcX = Math.min(origW - 1, Math.floor((x / targetW) * origW));
+                        const val = sliceData[srcY * origW + srcX];
+                        volumeHU[z * targetW * targetH + y * targetW + x] = val;
+                        if (val < minH) minH = val;
+                        if (val > maxH) maxH = val;
+                    }
+                }
+            }
+
+            let dz = validSlices[0].sliceThickness || 1.0;
+            if (validSlices.length > 2) {
+                const diffZ = Math.abs(validSlices[validSlices.length - 1].zKey - validSlices[0].zKey) / (validSlices.length - 1);
+                if (diffZ > 0.1 && diffZ < 20.0) dz = diffZ;
+            }
+
+            VolumeState.width = targetW;
+            VolumeState.height = targetH;
+            VolumeState.depth = targetD;
+            VolumeState.spacingX = validSlices[0].pixelSpacingX * (origW / targetW);
+            VolumeState.spacingY = validSlices[0].pixelSpacingY * (origH / targetH);
+            VolumeState.spacingZ = dz * (origD / targetD);
+            VolumeState.huData = volumeHU;
+            VolumeState.minHU = minH;
+            VolumeState.maxHU = maxH;
+            VolumeState.seriesTitle = validSlices[0].seriesDesc || `Serie TAC (${origW}×${origH}×${origD})`;
+            VolumeState.modality = `DICOM • ${origD} fette`;
+
+            uploadVolumeToGPU();
+            overlay.classList.add('hidden');
+            showToast(`Caricate ${origD} fette della serie principale pulita!`);
+        }
+
+        // =========================================================================
+        // 4. VISTE SINCRONIZZATE 2D MPR (ASSIALE, CORONALE, SAGITTALE) & SONDA HU
+        // =========================================================================
+        function huToGray(hu, center, width) {
+            const low = center - width * 0.5;
+            const norm = (hu - low) / width;
+            if (norm <= 0) return 0;
+            if (norm >= 1) return 255;
+            return (norm * 255) | 0;
+        }
+
+        function updateMPRViews() {
+            if (!VolumeState.huData) return;
+
+            const W = VolumeState.width;
+            const H = VolumeState.height;
+            const D = VolumeState.depth;
+            const hu = VolumeState.huData;
+            const wc = VolumeState.winCenter;
+            const ww = VolumeState.winWidth;
+
+            const sx = parseInt(document.getElementById('sliceX').value) || 0;
+            const sy = parseInt(document.getElementById('sliceY').value) || 0;
+            const sz = parseInt(document.getElementById('sliceZ').value) || 0;
+
+            document.getElementById('lblSliceX').textContent = `${sx + 1} / ${W}`;
+            document.getElementById('lblSliceY').textContent = `${sy + 1} / ${H}`;
+            document.getElementById('lblSliceZ').textContent = `${sz + 1} / ${D}`;
+
+            // 1. ASSIALE (Z fisso: X vs Y)
+            renderMPRSlice('canvasAxial', W, H, (x, y) => {
+                return hu[sz * W * H + y * W + x];
+            }, sx / W, sy / H, '#38bdf8', '#10b981');
+
+            // 2. CORONALE (Y fisso: X vs Z invertito alto/basso)
+            renderMPRSlice('canvasCoronal', W, D, (x, zPlot) => {
+                const z = (D - 1) - zPlot;
+                return hu[z * W * H + sy * W + x];
+            }, sx / W, 1.0 - (sz / D), '#38bdf8', '#f59e0b');
+
+            // 3. SAGITTALE (X fisso: Y vs Z invertito alto/basso)
+            renderMPRSlice('canvasSagittal', H, D, (y, zPlot) => {
+                const z = (D - 1) - zPlot;
+                return hu[z * W * H + y * W + sx];
+            }, sy / H, 1.0 - (sz / D), '#10b981', '#f59e0b');
+        }
+
+        function renderMPRSlice(canvasId, width, height, sampleFn, crossX, crossY, colV, colH) {
+            const canvas = document.getElementById(canvasId);
+            if (canvas.width !== width || canvas.height !== height) {
+                canvas.width = width;
+                canvas.height = height;
+            }
+            const ctx = canvas.getContext('2d');
+            const imgData = ctx.createImageData(width, height);
+            const data = imgData.data;
+
+            const wc = VolumeState.winCenter;
+            const ww = VolumeState.winWidth;
+
+            let p = 0;
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const valHU = sampleFn(x, y);
+                    const g = huToGray(valHU, wc, ww);
+                    data[p++] = g;
+                    data[p++] = g;
+                    data[p++] = g;
+                    data[p++] = 255;
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
+
+            // Disegna i mirini sincronizzati (Crosshairs)
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = colV;
+            ctx.beginPath();
+            ctx.moveTo(crossX * width, 0);
+            ctx.lineTo(crossX * width, height);
+            ctx.stroke();
+
+            ctx.strokeStyle = colH;
+            ctx.beginPath();
+            ctx.moveTo(0, crossY * height);
+            ctx.lineTo(width, crossY * height);
+            ctx.stroke();
+        }
+
+        // Sonda densità HU al passaggio del mouse sulle viste 2D
+        function setupMPRProbe() {
+            const probeEl = document.getElementById('huProbeValue');
+            const bindCanvas = (id, getCoordsFn) => {
+                const c = document.getElementById(id);
+                c.addEventListener('mousemove', (e) => {
+                    if (!VolumeState.huData) return;
+                    const rect = c.getBoundingClientRect();
+                    const nx = Math.max(0, Math.min(0.999, (e.clientX - rect.left) / rect.width));
+                    const ny = Math.max(0, Math.min(0.999, (e.clientY - rect.top) / rect.height));
+                    const [vx, vy, vz] = getCoordsFn(nx, ny);
+                    const idx = vz * VolumeState.width * VolumeState.height + vy * VolumeState.width + vx;
+                    const hu = VolumeState.huData[idx];
+                    let tissue = "Aria";
+                    if (hu > 1000) tissue = "Smalto / Corticale Densa";
+                    else if (hu > 220) tissue = "Osso";
+                    else if (hu > 15) tissue = "Tessuto Molle / Parenchima";
+                    else if (hu > -120) tissue = "Adipe / Cute";
+                    probeEl.textContent = `${hu} HU (${tissue})`;
+                });
+            };
+
+            bindCanvas('canvasAxial', (nx, ny) => [
+                Math.floor(nx * VolumeState.width),
+                Math.floor(ny * VolumeState.height),
+                parseInt(document.getElementById('sliceZ').value)
+            ]);
+            bindCanvas('canvasCoronal', (nx, ny) => [
+                Math.floor(nx * VolumeState.width),
+                parseInt(document.getElementById('sliceY').value),
+                Math.floor((1.0 - ny) * VolumeState.depth)
+            ]);
+            bindCanvas('canvasSagittal', (nx, ny) => [
+                parseInt(document.getElementById('sliceX').value),
+                Math.floor(nx * VolumeState.height),
+                Math.floor((1.0 - ny) * VolumeState.depth)
+            ]);
+        }
+
+        function set2DWindow(center, width) {
+            VolumeState.winCenter = center;
+            VolumeState.winWidth = width;
+            updateMPRViews();
+        }
+
+        function syncClipToMPR(axis) {
+            const W = VolumeState.width;
+            const H = VolumeState.height;
+            const D = VolumeState.depth;
+            if (axis === 'z') {
+                const zPct = Math.round((parseInt(document.getElementById('sliceZ').value) / (D - 1)) * 100);
+                document.getElementById('clipZMax').value = zPct;
+            } else if (axis === 'y') {
+                const yPct = Math.round((parseInt(document.getElementById('sliceY').value) / (H - 1)) * 100);
+                document.getElementById('clipYMin').value = yPct;
+            } else if (axis === 'x') {
+                const xPct = Math.round((parseInt(document.getElementById('sliceX').value) / (W - 1)) * 100);
+                document.getElementById('clipXMin').value = xPct;
+            }
+            updateClipping();
+        }
+
+        // =========================================================================
+        // 5. CONTROLLI UI: PRESET TESSUTI, TRANSFER FUNCTION & CLIPPING 3D
+        // =========================================================================
+        function applyPreset(presetName) {
+            document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active-preset'));
+            const activeBtn = document.getElementById(`preset-${presetName}`);
+            if (activeBtn) activeBtn.classList.add('active-preset');
+
+            if (presetName === 'bone') {
+                document.getElementById('sliderBoneThresh').value = 230;
+                document.getElementById('sliderBoneSharp').value = 180;
+                document.getElementById('sliderSoftOpacity').value = 0;
+                document.getElementById('sliderGlobalAlpha').value = 95;
+                document.getElementById('sliderSpecular').value = 65;
+                VolumeState.renderMode = 0;
+                VolumeState.boneTint = [1.0, 0.96, 0.86];
+            } else if (presetName === 'hybrid') {
+                document.getElementById('sliderBoneThresh').value = 250;
+                document.getElementById('sliderBoneSharp').value = 160;
+                document.getElementById('sliderSoftOpacity').value = 38;
+                document.getElementById('sliderGlobalAlpha').value = 95;
+                document.getElementById('sliderSpecular').value = 70;
+                VolumeState.renderMode = 0;
+                VolumeState.boneTint = [1.0, 0.96, 0.86];
+            } else if (presetName === 'angio') {
+                document.getElementById('sliderBoneThresh').value = 580;
+                document.getElementById('sliderBoneSharp').value = 220;
+                document.getElementById('sliderSoftOpacity').value = 8;
+                document.getElementById('sliderGlobalAlpha').value = 115;
+                document.getElementById('sliderSpecular').value = 88;
+                VolumeState.renderMode = 0;
+                VolumeState.boneTint = [1.0, 0.92, 0.80];
+            } else if (presetName === 'mip') {
+                document.getElementById('sliderBoneThresh').value = 180;
+                VolumeState.renderMode = 1;
+            }
+            updateTransferParams();
+        }
+
+        function updateTransferParams() {
+            const bThresh = parseFloat(document.getElementById('sliderBoneThresh').value);
+            const bSharp  = parseFloat(document.getElementById('sliderBoneSharp').value);
+            const sOpac   = parseFloat(document.getElementById('sliderSoftOpacity').value);
+            const gAlpha  = parseFloat(document.getElementById('sliderGlobalAlpha').value);
+            const spec    = parseFloat(document.getElementById('sliderSpecular').value);
+            const shade   = parseFloat(document.getElementById('sliderShade').value);
+            const steps   = parseInt(document.getElementById('sliderSteps').value);
+
+            VolumeState.boneThreshold = bThresh;
+            VolumeState.boneSharpness = bSharp;
+            VolumeState.softOpacity = sOpac / 100.0;
+            VolumeState.globalAlpha = gAlpha / 100.0;
+            VolumeState.specular = spec / 100.0;
+            VolumeState.shadeStrength = shade / 100.0;
+            VolumeState.steps = steps;
+
+            document.getElementById('valBoneThresh').textContent = `${bThresh} HU`;
+            document.getElementById('valBoneSharp').textContent = `${bSharp} HU`;
+            document.getElementById('valSoftOpacity').textContent = `${sOpac}%`;
+            document.getElementById('valGlobalAlpha').textContent = `${gAlpha}%`;
+            document.getElementById('valSpecular').textContent = `${spec}%`;
+            document.getElementById('valShade').textContent = `${shade}%`;
+            document.getElementById('valSteps').textContent = `${steps} step`;
+        }
+
+        function setBoneTint(r, g, b) {
+            VolumeState.boneTint = [r, g, b];
+        }
+
+        function updateClipping() {
+            let xMin = parseInt(document.getElementById('clipXMin').value);
+            let xMax = parseInt(document.getElementById('clipXMax').value);
+            if (xMin > xMax - 2) { xMin = xMax - 2; document.getElementById('clipXMin').value = xMin; }
+
+            let yMin = parseInt(document.getElementById('clipYMin').value);
+            let yMax = parseInt(document.getElementById('clipYMax').value);
+            if (yMin > yMax - 2) { yMin = yMax - 2; document.getElementById('clipYMin').value = yMin; }
+
+            let zMin = parseInt(document.getElementById('clipZMin').value);
+            let zMax = parseInt(document.getElementById('clipZMax').value);
+            if (zMin > zMax - 2) { zMin = zMax - 2; document.getElementById('clipZMin').value = zMin; }
+
+            VolumeState.clipMin = [xMin / 100.0, yMin / 100.0, zMin / 100.0];
+            VolumeState.clipMax = [xMax / 100.0, yMax / 100.0, zMax / 100.0];
+
+            document.getElementById('lblClipX').textContent = `${xMin}% - ${xMax}%`;
+            document.getElementById('lblClipY').textContent = `${yMin}% - ${yMax}%`;
+            document.getElementById('lblClipZ').textContent = `${zMin}% - ${zMax}%`;
+        }
+
+        function resetClipping() {
+            document.getElementById('clipXMin').value = 0;
+            document.getElementById('clipXMax').value = 100;
+            document.getElementById('clipYMin').value = 0;
+            document.getElementById('clipYMax').value = 100;
+            document.getElementById('clipZMin').value = 0;
+            document.getElementById('clipZMax').value = 100;
+            updateClipping();
+        }
+
+        // =========================================================================
+        // 6. TELECAMERA 3D, MATRICI E RENDER LOOP WEBGL2
+        // =========================================================================
+        function setupMouseAndTouchControls(canvas) {
+            canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+            canvas.addEventListener('mousedown', (e) => {
+                Camera.isDragging = true;
+                Camera.lastX = e.clientX;
+                Camera.lastY = e.clientY;
+                Camera.dragMode = (e.button === 2 || e.shiftKey) ? 'pan' : 'orbit';
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!Camera.isDragging) return;
+                const dx = e.clientX - Camera.lastX;
+                const dy = e.clientY - Camera.lastY;
+                Camera.lastX = e.clientX;
+                Camera.lastY = e.clientY;
+
+                if (Camera.dragMode === 'orbit') {
+                    Camera.yaw -= dx * 0.0085;
+                    Camera.pitch = Math.max(-1.52, Math.min(1.52, Camera.pitch + dy * 0.0085));
+                } else {
+                    Camera.panX += dx * 0.0022;
+                    Camera.panY -= dy * 0.0022;
+                }
+            });
+
+            window.addEventListener('mouseup', () => {
+                Camera.isDragging = false;
+            });
+
+            canvas.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                Camera.distance = Math.max(0.85, Math.min(4.8, Camera.distance + e.deltaY * 0.0015));
+            }, { passive: false });
+
+            // Touch mobile
+            canvas.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    Camera.isDragging = true;
+                    Camera.dragMode = 'orbit';
+                    Camera.lastX = e.touches[0].clientX;
+                    Camera.lastY = e.touches[0].clientY;
+                }
+            }, { passive: true });
+
+            canvas.addEventListener('touchmove', (e) => {
+                if (!Camera.isDragging || e.touches.length !== 1) return;
+                const dx = e.touches[0].clientX - Camera.lastX;
+                const dy = e.touches[0].clientY - Camera.lastY;
+                Camera.lastX = e.touches[0].clientX;
+                Camera.lastY = e.touches[0].clientY;
+                Camera.yaw -= dx * 0.0085;
+                Camera.pitch = Math.max(-1.52, Math.min(1.52, Camera.pitch + dy * 0.0085));
+            }, { passive: true });
+
+            canvas.addEventListener('touchend', () => {
+                Camera.isDragging = false;
+            });
+        }
+
+        function setCameraView(view) {
+            Camera.panX = 0;
+            Camera.panY = 0;
+            if (view === 'front') { Camera.yaw = 0.0; Camera.pitch = 0.0; }
+            else if (view === 'side') { Camera.yaw = Math.PI / 2; Camera.pitch = 0.0; }
+            else if (view === 'top') { Camera.yaw = 0.0; Camera.pitch = 1.48; }
+            else if (view === 'iso') { Camera.yaw = 0.52; Camera.pitch = 0.25; }
+        }
+
+        function toggleAutoRotate() {
+            Camera.autoRotate = !Camera.autoRotate;
+            const btn = document.getElementById('btnAutoRotate');
+            if (Camera.autoRotate) {
+                btn.classList.add('border-amber-400', 'text-amber-300', 'bg-amber-500/20');
+            } else {
+                btn.classList.remove('border-amber-400', 'text-amber-300', 'bg-amber-500/20');
+            }
+        }
+
+        function resizeCanvas() {
+            const container = document.getElementById('viewportContainer');
+            const canvas = document.getElementById('glCanvas');
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            canvas.width = Math.floor(container.clientWidth * dpr);
+            canvas.height = Math.floor(container.clientHeight * dpr);
+            if (gl) gl.viewport(0, 0, canvas.width, canvas.height);
+        }
+
+        // Algebra lineare compatta per Mat4 Proiezione + LookAt
+        function perspectiveMatrix(fovRad, aspect, near, far) {
+            const f = 1.0 / Math.tan(fovRad / 2);
+            const nf = 1 / (near - far);
+            return new Float32Array([
+                f / aspect, 0, 0, 0,
+                0, f, 0, 0,
+                0, 0, (far + near) * nf, -1,
+                0, 0, (2 * far * near) * nf, 0
+            ]);
+        }
+
+        function lookAtMatrix(eye, target, up) {
+            let zx = eye[0] - target[0], zy = eye[1] - target[1], zz = eye[2] - target[2];
+            let len = Math.hypot(zx, zy, zz);
+            zx /= len; zy /= len; zz /= len;
+
+            let xx = up[1] * zz - up[2] * zy;
+            let xy = up[2] * zx - up[0] * zz;
+            let xz = up[0] * zy - up[1] * zx;
+            len = Math.hypot(xx, xy, xz);
+            xx /= len; xy /= len; xz /= len;
+
+            let yx = zy * xz - zz * xy;
+            let yy = zz * xx - zx * xz;
+            let yz = zx * xy - zy * xx;
+
+            return new Float32Array([
+                xx, yx, zx, 0,
+                xy, yy, zy, 0,
+                xz, yz, zz, 0,
+                -(xx * eye[0] + xy * eye[1] + xz * eye[2]),
+                -(yx * eye[0] + yy * eye[1] + yz * eye[2]),
+                -(zx * eye[0] + zy * eye[1] + zz * eye[2]),
+                1
+            ]);
+        }
+
+        function multiplyMat4(a, b) {
+            const out = new Float32Array(16);
+            for (let i = 0; i < 4; i++) {
+                for (let j = 0; j < 4; j++) {
+                    out[j * 4 + i] =
+                        a[0 * 4 + i] * b[j * 4 + 0] +
+                        a[1 * 4 + i] * b[j * 4 + 1] +
+                        a[2 * 4 + i] * b[j * 4 + 2] +
+                        a[3 * 4 + i] * b[j * 4 + 3];
+                }
+            }
+            return out;
+        }
+
+        function renderLoop() {
+            if (Camera.autoRotate && !Camera.isDragging) {
+                Camera.yaw += 0.006;
+            }
+
+            if (gl && program && volumeTexture) {
+                const canvas = gl.canvas;
+                gl.clearColor(0.0, 0.0, 0.0, 0.0);
+                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+                gl.enable(gl.BLEND);
+                gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+                // 1. Manteniamo il cubo unitario di raymarching perfettamente centrato [-0.5, 0.5]^3
+                const scaleVec = [1.0, 1.0, 1.0];
+
+                // 2. Calcolo della camera orbitale nello spazio standard del cubo
+                const cosP = Math.cos(Camera.pitch);
+                const sinP = Math.sin(Camera.pitch);
+                const cosY = Math.cos(Camera.yaw);
+                const sinY = Math.sin(Camera.yaw);
+
+                const camX = Camera.distance * cosP * sinY - Camera.panX;
+                const camY = -Camera.distance * cosP * cosY;
+                const camZ = Camera.distance * sinP - Camera.panY;
+
+                const eye = [camX, camY, camZ];
+                const target = [-Camera.panX, 0.0, -Camera.panY];
+                const up = [0.0, 0.0, 1.0];
+
+                const aspect = canvas.width / Math.max(1, canvas.height);
+                const proj = perspectiveMatrix(40 * Math.PI / 180, aspect, 0.05, 20.0);
+                
+                // 3. Matrice Model-View-Projection diretta senza scale asimmetriche che rompono il raymarching
+                const view = lookAtMatrix(eye, target, up);
+                const mvp = multiplyMat4(proj, view);
+
+                gl.useProgram(program);
+                gl.bindVertexArray(vao);
+
+                gl.activeTexture(gl.TEXTURE0);
+                gl.bindTexture(gl.TEXTURE_3D, volumeTexture);
+                gl.uniform1i(uniforms.uVolumeTex, 0);
+
+                gl.uniformMatrix4fv(uniforms.uModelViewProjection, false, mvp);
+                gl.uniform3fv(uniforms.uCamPosObj, eye);
+                gl.uniform3fv(uniforms.uVolumeScale, scaleVec);
+                gl.uniform3fv(uniforms.uClipMin, VolumeState.clipMin);
+                gl.uniform3fv(uniforms.uClipMax, VolumeState.clipMax);
+
+                gl.uniform1f(uniforms.uBoneThreshold, VolumeState.boneThreshold);
+                gl.uniform1f(uniforms.uBoneSharpness, VolumeState.boneSharpness);
+                gl.uniform1f(uniforms.uSoftOpacity, VolumeState.softOpacity);
+                gl.uniform1f(uniforms.uGlobalAlpha, VolumeState.globalAlpha);
+                gl.uniform1f(uniforms.uSpecular, VolumeState.specular);
+                gl.uniform1f(uniforms.uShadeStrength, VolumeState.shadeStrength);
+                gl.uniform1i(uniforms.uSteps, Camera.isDragging ? Math.min(180, VolumeState.steps) : VolumeState.steps);
+                gl.uniform1i(uniforms.uRenderMode, VolumeState.renderMode);
+                gl.uniform3fv(uniforms.uBoneTint, VolumeState.boneTint);
+
+                gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0);
+                gl.bindVertexArray(null);
+            }
+
+            requestAnimationFrame(renderLoop);
+        }
+
+        // =========================================================================
+        // 7. UTILITIES: SCREENSHOT & NOTIFICHE TOAST
+        // =========================================================================
+        function captureScreenshot() {
+            const canvas = document.getElementById('glCanvas');
+            const link = document.createElement('a');
+            link.download = `TAC_3D_${Date.now()}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            showToast("Istantanea 3D salvata in formato PNG!");
+        }
+
+        let toastTimer = null;
+        function showToast(msg, isError = false) {
+            const toast = document.getElementById('statusToast');
+            const txt = document.getElementById('statusText');
+            txt.textContent = msg;
+            toast.style.borderColor = isError ? 'rgba(239,68,68,0.5)' : 'rgba(56,189,248,0.35)';
+            toast.style.opacity = '1';
+            if (toastTimer) clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => {
+                toast.style.opacity = '0.75';
+            }, 5000);
+        }
+
+        // Avvio applicazione
+        window.onload = function () {
+            initWebGL();
+            setupMPRProbe();
+            generateProceduralPhantom();
+            requestAnimationFrame(renderLoop);
+        };
+    </script>
+</body>
+</html>
