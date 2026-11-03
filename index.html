@@ -166,7 +166,7 @@
         <!-- LEFT SIDEBAR: PRESETS, TISSUE TRANSFER FUNCTION & SHADING -->
         <aside class="w-80 glass-panel border-r border-slate-800/80 flex flex-col z-20 overflow-y-auto shrink-0">
             
-            <!-- METADATA SERIE CARICATA -->
+            <!-- METADATA SERIE CARICATA + SELETTORE MULTI-SERIE -->
             <div class="p-3.5 border-b border-slate-800/80 bg-slate-900/40">
                 <div class="flex items-center justify-between mb-1.5">
                     <span class="text-[11px] font-semibold uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
@@ -176,6 +176,19 @@
                     <span id="metaModality" class="text-[11px] mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">CT • HU</span>
                 </div>
                 <div id="metaTitle" class="text-xs font-semibold text-white truncate">Teschio Demo Sintetico (HR-CT)</div>
+
+                <!-- Selettore Serie DICOM (visibile automaticamente con esami multi-serie) -->
+                <div id="seriesSelectorContainer" class="hidden mt-2.5 pt-2 border-t border-slate-800/80">
+                    <div class="flex items-center justify-between mb-1">
+                        <label for="seriesSelect" class="text-[10px] font-semibold uppercase tracking-wider text-amber-400">
+                            Serie Rilevate (0020,000E)
+                        </label>
+                        <span id="seriesCountBadge" class="text-[10px] mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300">0</span>
+                    </div>
+                    <select id="seriesSelect" onchange="activateSeriesByUID(this.value)" class="w-full bg-slate-950/90 border border-slate-700 hover:border-sky-400 rounded-lg px-2 py-1.5 text-[11px] text-slate-200 focus:outline-none focus:border-sky-400 transition cursor-pointer">
+                    </select>
+                </div>
+
                 <div class="grid grid-cols-3 gap-1.5 mt-2.5 text-[11px]">
                     <div class="bg-slate-950/70 p-1.5 rounded border border-slate-800/80">
                         <div class="text-slate-500 text-[10px]">Matrice</div>
@@ -186,7 +199,7 @@
                         <div id="metaSpacing" class="mono font-medium text-slate-200">1.5×1.5 mm</div>
                     </div>
                     <div class="bg-slate-950/70 p-1.5 rounded border border-slate-800/80">
-                        <div class="text-slate-500 text-[10px]">Range HU</div>
+                        <div class="text-slate-500 text-[10px]">Range Z (mm)</div>
                         <div id="metaHURange" class="mono font-medium text-sky-300">-1000..+2400</div>
                     </div>
                 </div>
@@ -518,11 +531,14 @@
         precision highp float;
         in vec3 aPosition;
         uniform mat4 uModelViewProjection;
+        uniform vec3 uVolumeScale;
         out vec3 vPosObj;
 
         void main() {
-            vPosObj = aPosition; // Coordinate nel box [-0.5, 0.5]^3
-            gl_Position = uModelViewProjection * vec4(aPosition, 1.0);
+            // Scala il box [-0.5, 0.5]^3 secondo le proporzioni millimetriche reali del paziente
+            vec3 scaledPos = aPosition * uVolumeScale;
+            vPosObj = scaledPos;
+            gl_Position = uModelViewProjection * vec4(scaledPos, 1.0);
         }
     </script>
 
@@ -1063,21 +1079,25 @@
         }
 
         // =========================================================================
-        // 3. PARSER DICOM MULTI-FILE NATIVO + DAIKON (SUPPORTA IMPLICIT/EXPLICIT LE)
+        // 3. PARSER DICOM MULTI-SERIE + POSIZIONAMENTO MILLIMETRICO (0020,0032)
         // =========================================================================
+        let LoadedSeriesMap = {}; // Archivia le serie volumetriche valide per SeriesInstanceUID
+
         document.getElementById('folderInput').addEventListener('change', (e) => {
             if (e.target.files && e.target.files.length > 0) {
                 loadDicomFiles(Array.from(e.target.files));
+                e.target.value = ''; // Permette di ricaricare la stessa cartella
             }
         });
 
         document.getElementById('filesInput').addEventListener('change', (e) => {
             if (e.target.files && e.target.files.length > 0) {
                 loadDicomFiles(Array.from(e.target.files));
+                e.target.value = '';
             }
         });
 
-        // Gestione Drag & Drop sull'intera finestra
+        // Gestione Drag & Drop ricorsivo per cartelle e sottocartelle con file senza estensione
         window.addEventListener('dragover', (e) => {
             e.preventDefault();
             document.getElementById('dropOverlay').classList.remove('hidden');
@@ -1134,27 +1154,92 @@
             }
         });
 
-        // Parser binario DICOM di fallback ultra-veloce per file CT non compressi
-        function parseDicomBufferFallback(arrayBuffer) {
+        // Calcola la coordinata millimetrica reale lungo l'asse normale al piano immagine
+        // usando ImagePositionPatient (0020,0032) e ImageOrientationPatient (0020,0037)
+        function computeRealMillimeterCoord(ipp, iop, fallbackLoc) {
+            if (Array.isArray(ipp) && ipp.length >= 3 && !isNaN(ipp[0]) && !isNaN(ipp[1]) && !isNaN(ipp[2])) {
+                if (Array.isArray(iop) && iop.length >= 6 && !isNaN(iop[0])) {
+                    // Vettore riga (r) e vettore colonna (c)
+                    const rx = iop[0], ry = iop[1], rz = iop[2];
+                    const cx = iop[3], cy = iop[4], cz = iop[5];
+                    // Normale al piano della fetta: n = r x c
+                    const nx = ry * cz - rz * cy;
+                    const ny = rz * cx - rx * cz;
+                    const nz = rx * cy - ry * cx;
+                    const normLen = Math.hypot(nx, ny, nz);
+                    if (normLen > 0.5) {
+                        // Proiezione scalare in millimetri reali lungo l'asse di acquisizione
+                        return (ipp[0] * nx + ipp[1] * ny + ipp[2] * nz) / normLen;
+                    }
+                }
+                // Se l'orientamento non è specificato, usa la coordinata Z millimetrica di ImagePositionPatient
+                return ipp[2];
+            }
+            return (fallbackLoc !== null && !isNaN(fallbackLoc)) ? fallbackLoc : null;
+        }
+
+        // Rileva se una fetta è uno Scout 2D / Localizer / Topogram o serie accessoria non volumetrica
+        function isScoutOrAccessorySlice(meta) {
+            const imgType = (meta.imageType || "").toUpperCase();
+            const desc = (meta.seriesDesc || "").toUpperCase();
+            const mod = (meta.modality || "CT").toUpperCase();
+
+            // Scarta modalità non d'immagine (Structured Report, Presentation State, Key Object, ecc.)
+            if (["SR", "PR", "KO", "SEG", "RTSTRUCT", "RTPLAN", "DOC"].includes(mod)) return true;
+
+            // Scarta se ImageType (0008,0008) dichiara esplicitamente LOCALIZER / SCOUT
+            if (
+                imgType.includes("LOCALIZER") ||
+                imgType.includes("SCOUT") ||
+                imgType.includes("TOPOGRAM") ||
+                imgType.includes("SURVIEW") ||
+                imgType.includes("SCANOSCOPE") ||
+                imgType.includes("PROJECTION")
+            ) {
+                return true;
+            }
+
+            // Scarta se la descrizione della serie indica uno scout / dose report / protocollo
+            if (
+                desc.includes("SCOUT") ||
+                desc.includes("LOCALIZER") ||
+                desc.includes("TOPOGRAM") ||
+                desc.includes("SURVIEW") ||
+                desc.includes("DOSE REPORT") ||
+                desc.includes("PATIENT PROTOCOL")
+            ) {
+                return true;
+            }
+
+            return false;
+        }
+
+        // Parser binario DICOM nativo (corretto e completo di 0020,000E / 0020,0032 / 0020,0037 / 0008,0008)
+        function parseDicomBufferFallback(arrayBuffer, fallbackName = "") {
             const view = new DataView(arrayBuffer);
             const len = view.byteLength;
             if (len < 256) return null;
 
-            // Verifica preambolo 'DICM' a byte 128
             let offset = 0;
             const hasDICM = (
-                view.getUint8(128) === 0x44 && // D
-                view.getUint8(129) === 0x49 && // I
-                view.getUint8(130) === 0x43 && // C
-                view.getUint8(131) === 0x4D    // M
+                view.getUint8(128) === 0x44 &&
+                view.getUint8(129) === 0x49 &&
+                view.getUint8(130) === 0x43 &&
+                view.getUint8(131) === 0x4D
             );
             if (hasDICM) offset = 132;
 
-            let rows = 0, cols = 0, bitsAllocated = 16, pixelRepresentation = 1;
+            // Variabili dichiarate FUORI dal ciclo while (fix del bug di scope)
+            let rows = 0, cols = 0, samplesPerPixel = 1;
+            let bitsAllocated = 16, pixelRepresentation = 1;
             let rescaleSlope = 1.0, rescaleIntercept = 0.0;
-            let sliceLocation = null, instanceNumber = 0, zPos = null;
+            let sliceLocation = null, instanceNumber = 0;
+            let imagePosition = null, imageOrientation = null;
             let pixelSpacingX = 1.0, pixelSpacingY = 1.0, sliceThickness = 1.0;
-            let seriesDesc = "";
+            let seriesDesc = "", seriesNumber = 0;
+            let seriesUID = "";
+            let imageType = "", modality = "CT";
+            let transferSyntax = "1.2.840.10008.1.2";
             let pixelDataOffset = -1;
 
             const readAscii = (start, length) => {
@@ -1166,13 +1251,22 @@
                 return s.trim();
             };
 
-            const longVRs = new Set(["OB", "OW", "OF", "SQ", "UT", "UN"]);
+            const longVRs = new Set(["OB", "OW", "OF", "OD", "SQ", "UT", "UN", "UC", "UR", "OL"]);
+            let implicitLE = false;
 
             while (offset + 8 < len) {
                 const group = view.getUint16(offset, true);
                 const element = view.getUint16(offset + 2, true);
+
+                // Gestione tag di sequenza / delimitatori (FFFE, E000 / E00D / E0DD)
+                if (group === 0xFFFE) {
+                    const seqLen = view.getUint32(offset + 4, true);
+                    offset += 8 + ((seqLen !== 0xFFFFFFFF && seqLen > 0 && offset + 8 + seqLen <= len) ? seqLen : 0);
+                    continue;
+                }
+
                 const vr1 = String.fromCharCode(view.getUint8(offset + 4), view.getUint8(offset + 5));
-                const isExplicit = /^[A-Z]{2}$/.test(vr1);
+                const isExplicit = (group === 0x0002) ? true : (!implicitLE && /^[A-Z]{2}$/.test(vr1));
 
                 let vl = 0;
                 let headerSize = 8;
@@ -1198,24 +1292,41 @@
                     break;
                 }
 
+                // Sequenze con lunghezza indefinita: salta l'header e prosegui
                 if (vl === 0xFFFFFFFF || vl < 0 || valOffset + vl > len) {
-                    offset += 8;
+                    offset += headerSize;
                     continue;
                 }
 
-                let seriesInstanceUID = "series_unknown";
-
-                if (group === 0x0008 && element === 0x103E) {
+                if (group === 0x0002 && element === 0x0010) {
+                    transferSyntax = readAscii(valOffset, vl);
+                    if (transferSyntax === "1.2.840.10008.1.2") implicitLE = true;
+                } else if (group === 0x0008 && element === 0x0008) {
+                    imageType = readAscii(valOffset, vl);
+                } else if (group === 0x0008 && element === 0x0060) {
+                    modality = readAscii(valOffset, vl) || "CT";
+                } else if (group === 0x0008 && element === 0x103E) {
                     seriesDesc = readAscii(valOffset, vl);
+                } else if (group === 0x0018 && element === 0x0050) {
+                    sliceThickness = parseFloat(readAscii(valOffset, vl)) || 1.0;
+                } else if (group === 0x0020 && element === 0x000E) {
+                    seriesUID = readAscii(valOffset, vl);
+                } else if (group === 0x0020 && element === 0x0011) {
+                    seriesNumber = parseInt(readAscii(valOffset, vl)) || 0;
                 } else if (group === 0x0020 && element === 0x0013) {
                     instanceNumber = parseInt(readAscii(valOffset, vl)) || 0;
                 } else if (group === 0x0020 && element === 0x0032) {
-                    const parts = readAscii(valOffset, vl).split('\\');
-                    if (parts.length >= 3) zPos = parseFloat(parts[2]);
+                    // ImagePositionPatient (x\y\z in mm)
+                    const parts = readAscii(valOffset, vl).split('\\').map(Number);
+                    if (parts.length >= 3 && !isNaN(parts[2])) imagePosition = parts;
+                } else if (group === 0x0020 && element === 0x0037) {
+                    // ImageOrientationPatient (rx\ry\rz\cx\cy\cz)
+                    const parts = readAscii(valOffset, vl).split('\\').map(Number);
+                    if (parts.length >= 6 && !isNaN(parts[0])) imageOrientation = parts;
                 } else if (group === 0x0020 && element === 0x1041) {
                     sliceLocation = parseFloat(readAscii(valOffset, vl));
-                } else if (group === 0x0018 && element === 0x0050) {
-                    sliceThickness = parseFloat(readAscii(valOffset, vl)) || 1.0;
+                } else if (group === 0x0028 && element === 0x0002) {
+                    samplesPerPixel = view.getUint16(valOffset, true);
                 } else if (group === 0x0028 && element === 0x0010) {
                     rows = view.getUint16(valOffset, true);
                 } else if (group === 0x0028 && element === 0x0011) {
@@ -1231,23 +1342,28 @@
                 } else if (group === 0x0028 && element === 0x0103) {
                     pixelRepresentation = view.getUint16(valOffset, true);
                 } else if (group === 0x0028 && element === 0x1052) {
-                    rescaleIntercept = parseFloat(readAscii(valOffset, vl)) || 0.0;
+                    const val = parseFloat(readAscii(valOffset, vl));
+                    if (!isNaN(val)) rescaleIntercept = val;
                 } else if (group === 0x0028 && element === 0x1053) {
-                    rescaleSlope = parseFloat(readAscii(valOffset, vl)) || 1.0;
-                } else if (group === 0x0020 && element === 0x000E) {
-                    seriesInstanceUID = readAscii(valOffset, vl) || "series_unknown";
+                    const val = parseFloat(readAscii(valOffset, vl));
+                    if (!isNaN(val) && val !== 0) rescaleSlope = val;
                 }
 
                 offset = valOffset + vl;
             }
 
-            if (rows <= 0 || cols <= 0) return null;
+            // Scarta immagini RGB/secondarie (samplesPerPixel > 1) o prive di geometria valida
+            if (rows <= 16 || cols <= 16 || samplesPerPixel > 1) return null;
+
+            const metaCheck = { imageType, seriesDesc, modality };
+            if (isScoutOrAccessorySlice(metaCheck)) return null;
+
             const numPixels = rows * cols;
-            const bytesNeeded = numPixels * (bitsAllocated / 8);
+            const bytesPerPixel = Math.max(1, bitsAllocated >> 3);
+            const bytesNeeded = numPixels * bytesPerPixel;
 
             if (pixelDataOffset < 0 || pixelDataOffset + bytesNeeded > len) {
-                // Se il tag PixelData era annidato, prendiamo gli ultimi rows*cols*2 byte del file
-                if (len >= bytesNeeded) {
+                if (len >= bytesNeeded + 132) {
                     pixelDataOffset = len - bytesNeeded;
                 } else {
                     return null;
@@ -1256,35 +1372,83 @@
 
             const huSlice = new Int16Array(numPixels);
             let pOff = pixelDataOffset;
-            for (let i = 0; i < numPixels; i++) {
-                let raw = (pixelRepresentation === 1)
-                    ? view.getInt16(pOff, true)
-                    : view.getUint16(pOff, true);
-                pOff += 2;
-                let hu = Math.round(raw * rescaleSlope + rescaleIntercept);
-                // Se l'immagine non aveva RescaleIntercept ma ha offset tipico CT +1024
-                if (rescaleIntercept === 0 && raw >= 0 && raw < 5000) {
-                    // Manteniamo il valore diretto
+
+            if (bitsAllocated === 16) {
+                for (let i = 0; i < numPixels; i++) {
+                    const raw = (pixelRepresentation === 1)
+                        ? view.getInt16(pOff, true)
+                        : view.getUint16(pOff, true);
+                    pOff += 2;
+                    const hu = Math.round(raw * rescaleSlope + rescaleIntercept);
+                    huSlice[i] = Math.max(-1024, Math.min(3071, hu));
                 }
-                huSlice[i] = Math.max(-1024, Math.min(3071, hu));
+            } else if (bitsAllocated === 8) {
+                for (let i = 0; i < numPixels; i++) {
+                    const raw = view.getUint8(pOff++);
+                    const hu = Math.round(raw * rescaleSlope + rescaleIntercept);
+                    huSlice[i] = Math.max(-1024, Math.min(3071, hu));
+                }
+            } else {
+                return null;
             }
+
+            const mmCoord = computeRealMillimeterCoord(imagePosition, imageOrientation, sliceLocation);
 
             return {
                 rows,
                 cols,
                 huSlice,
-                zKey: (zPos !== null && !isNaN(zPos)) ? zPos : ((sliceLocation !== null && !isNaN(sliceLocation)) ? sliceLocation : instanceNumber),
+                hasIPP: Array.isArray(imagePosition) && imagePosition.length >= 3,
+                imagePosition,
+                imageOrientation,
+                mmCoord, // Coordinata millimetrica reale lungo l'asse della serie
+                instanceNumber,
                 pixelSpacingX,
                 pixelSpacingY,
                 sliceThickness,
-                seriesDesc
+                seriesDesc: seriesDesc || fallbackName,
+                seriesNumber,
+                seriesUID: seriesUID || "series_fallback_default",
+                imageType,
+                modality
             };
         }
 
+        // Estrae un tag stringa grezzo da Daikon se il metodo helper non esiste
+        function getDaikonTagString(image, group, element) {
+            try {
+                if (image && image.tags) {
+                    const key = daikon.Tag.createKey(group, element);
+                    const tag = image.tags[key];
+                    if (tag && tag.value) {
+                        return Array.isArray(tag.value) ? tag.value.join('\\') : String(tag.value);
+                    }
+                }
+            } catch (e) {}
+            return "";
+        }
+
         async function loadDicomFiles(fileList) {
+            // Accetta file con o senza estensione in qualsiasi sottocartella, ignorando solo file di sistema noti
             const candidateFiles = fileList.filter(f => {
                 const name = f.name.toLowerCase();
-                return !name.startsWith('.') && name !== 'dicomdir' && !name.endsWith('.xml') && !name.endsWith('.txt') && !name.endsWith('.jpg') && !name.endsWith('.png') && f.size > 1024;
+                return (
+                    !name.startsWith('.') &&
+                    name !== 'dicomdir' &&
+                    name !== 'thumbs.db' &&
+                    name !== 'desktop.ini' &&
+                    !name.endsWith('.xml') &&
+                    !name.endsWith('.txt') &&
+                    !name.endsWith('.html') &&
+                    !name.endsWith('.pdf') &&
+                    !name.endsWith('.jpg') &&
+                    !name.endsWith('.jpeg') &&
+                    !name.endsWith('.png') &&
+                    !name.endsWith('.exe') &&
+                    !name.endsWith('.dll') &&
+                    !name.endsWith('.zip') &&
+                    f.size > 512
+                );
             });
 
             if (candidateFiles.length === 0) {
@@ -1296,16 +1460,17 @@
             const bar = document.getElementById('loadingBar');
             const sub = document.getElementById('loadingSub');
             overlay.classList.remove('hidden');
-            document.getElementById('loadingTitle').textContent = `Analisi di ${candidateFiles.length} file DICOM...`;
+            document.getElementById('loadingTitle').textContent = `Scansione di ${candidateFiles.length} file nelle cartelle...`;
 
             const parsedSlices = [];
+            let discardedScoutCount = 0;
 
             for (let i = 0; i < candidateFiles.length; i++) {
                 const f = candidateFiles[i];
-                if (i % 8 === 0 || i === candidateFiles.length - 1) {
+                if (i % 12 === 0 || i === candidateFiles.length - 1) {
                     const pct = Math.round(((i + 1) / candidateFiles.length) * 85);
                     bar.style.width = `${pct}%`;
-                    sub.textContent = `Decodifica fetta ${i + 1} di ${candidateFiles.length} (${f.name})`;
+                    sub.textContent = `Lettura header e pixel ${i + 1} / ${candidateFiles.length}`;
                     await new Promise(r => setTimeout(r, 0));
                 }
 
@@ -1313,30 +1478,58 @@
                     const buf = await f.arrayBuffer();
                     let sliceObj = null;
 
-                    // 1. Tentativo con libreria Daikon
+                    // 1. Tentativo primario con Daikon (supporta anche sintassi compresse JPEG/RLE)
                     if (window.daikon) {
                         try {
                             const dataView = new DataView(buf);
                             const image = daikon.Series.parseImage(dataView);
                             if (image && image.hasPixelData()) {
+                                const imageType = getDaikonTagString(image, 0x0008, 0x0008);
+                                const modality = image.getModality ? (image.getModality() || "CT") : getDaikonTagString(image, 0x0008, 0x0060);
+                                const seriesDesc = image.getSeriesDescription() || "";
+
+                                if (isScoutOrAccessorySlice({ imageType, seriesDesc, modality })) {
+                                    discardedScoutCount++;
+                                    continue;
+                                }
+
                                 const rows = image.getRows();
                                 const cols = image.getCols();
                                 const interpreted = image.getInterpretedData(false, false);
-                                if (rows && cols && interpreted && interpreted.length >= rows * cols) {
+
+                                if (rows > 16 && cols > 16 && interpreted && interpreted.length >= rows * cols) {
                                     const huSlice = new Int16Array(rows * cols);
                                     for (let p = 0; p < rows * cols; p++) {
                                         huSlice[p] = Math.max(-1024, Math.min(3071, Math.round(interpreted[p])));
                                     }
-                                    const pos = image.getImagePosition();
+                                    const ipp = image.getImagePosition(); // (0020,0032) [x, y, z]
+                                    const iop = image.getImageDirections ? image.getImageDirections() : null; // (0020,0037)
                                     const sp = image.getPixelSpacing();
+                                    const sliceLoc = image.getSliceLocation();
+                                    const hasIPP = Array.isArray(ipp) && ipp.length >= 3 && !isNaN(ipp[2]);
+                                    const mmCoord = computeRealMillimeterCoord(ipp, iop, sliceLoc);
+
+                                    // Cartella padre come descrizione di fallback se SeriesDescription è vuoto
+                                    const relPath = f.webkitRelativePath || f.name;
+                                    const folderHint = relPath.includes('/') ? relPath.split('/').slice(-2, -1)[0] : f.name;
+
                                     sliceObj = {
-                                        rows, cols, huSlice,
-                                        zKey: (pos && pos.length >= 3) ? pos[2] : (image.getSliceLocation() || image.getImageNumber() || i),
-                                        pixelSpacingX: (sp && sp.length >= 2) ? sp[1] : 1.0,
-                                        pixelSpacingY: (sp && sp.length >= 2) ? sp[0] : 1.0,
+                                        rows,
+                                        cols,
+                                        huSlice,
+                                        hasIPP,
+                                        imagePosition: hasIPP ? ipp : null,
+                                        imageOrientation: iop,
+                                        mmCoord,
+                                        instanceNumber: image.getImageNumber() || 0,
+                                        pixelSpacingX: (sp && sp.length >= 2 && sp[1] > 0) ? sp[1] : 1.0,
+                                        pixelSpacingY: (sp && sp.length >= 2 && sp[0] > 0) ? sp[0] : 1.0,
                                         sliceThickness: image.getSliceThickness() || 1.0,
-                                        seriesDesc: image.getSeriesDescription() || f.name,
-                                        seriesUID: image.getSeriesInstanceUID() || "series_default"
+                                        seriesDesc: seriesDesc || `Serie ${folderHint}`,
+                                        seriesNumber: image.getSeriesNumber ? (image.getSeriesNumber() || 0) : 0,
+                                        seriesUID: image.getSeriesInstanceUID() || image.getSeriesId() || `series_${folderHint}`,
+                                        imageType,
+                                        modality: modality || "CT"
                                     };
                                 }
                             }
@@ -1345,7 +1538,9 @@
 
                     // 2. Fallback binario diretto
                     if (!sliceObj) {
-                        sliceObj = parseDicomBufferFallback(buf);
+                        const relPath = f.webkitRelativePath || f.name;
+                        const folderHint = relPath.includes('/') ? relPath.split('/').slice(-2, -1)[0] : f.name;
+                        sliceObj = parseDicomBufferFallback(buf, `Serie ${folderHint}`);
                     }
 
                     if (sliceObj && sliceObj.rows > 16 && sliceObj.cols > 16) {
@@ -1358,47 +1553,161 @@
 
             if (parsedSlices.length === 0) {
                 overlay.classList.add('hidden');
-                showToast("Impossibile decodificare i pixel dai file selezionati.", true);
+                showToast("Impossibile decodificare serie volumetriche valide dai file selezionati.", true);
                 return;
             }
 
-            // --- NUOVA LOGICA: SEPARAZIONE PER SERIES INSTANCE UID ---
-            const seriesMap = {};
-            parsedSlices.forEach(s => {
-                const uid = s.seriesUID || "unknown_series";
-                if (!seriesMap[uid]) {
-                    seriesMap[uid] = [];
+            // --- RAGGRUPPAMENTO PER SeriesInstanceUID (0020,000E) E FILTRO SERIE ACCESSORIE ---
+            const rawGroups = {};
+            for (const s of parsedSlices) {
+                const uid = (s.seriesUID || "series_default").trim();
+                if (!rawGroups[uid]) rawGroups[uid] = [];
+                rawGroups[uid].push(s);
+            }
+
+            LoadedSeriesMap = {};
+            const validSeriesList = [];
+
+            for (const uid of Object.keys(rawGroups)) {
+                let slices = rawGroups[uid];
+
+                // 1. Filtra solo le fette che hanno ImagePositionPatient (0020,0032) o coordinata millimetrica valida
+                const withCoords = slices.filter(s => s.mmCoord !== null && !isNaN(s.mmCoord));
+                if (withCoords.length >= 5) {
+                    slices = withCoords;
                 }
-                seriesMap[uid].push(s);
+
+                // 2. Mantiene solo la risoluzione dominante (rows x cols) dentro la serie,
+                // scartando eventuali immagini riepilogative / localizer annidate nella stessa serie
+                const resCounts = {};
+                let domKey = "";
+                let domMax = 0;
+                for (const s of slices) {
+                    const k = `${s.rows}x${s.cols}`;
+                    resCounts[k] = (resCounts[k] || 0) + 1;
+                    if (resCounts[k] > domMax) {
+                        domMax = resCounts[k];
+                        domKey = k;
+                    }
+                }
+                slices = slices.filter(s => `${s.rows}x${s.cols}` === domKey);
+
+                // 3. Ordinamento per coordinata millimetrica reale (0020,0032) - MAI alfabetico!
+                slices.sort((a, b) => {
+                    if (a.mmCoord !== null && b.mmCoord !== null) {
+                        return a.mmCoord - b.mmCoord;
+                    }
+                    return a.instanceNumber - b.instanceNumber;
+                });
+
+                // 4. Deduplica fette alla medesima coordinata millimetrica (< 0.01 mm, es. ricostruzioni doppie)
+                const uniqueSlices = [];
+                for (const s of slices) {
+                    if (
+                        uniqueSlices.length === 0 ||
+                        s.mmCoord === null ||
+                        Math.abs(s.mmCoord - uniqueSlices[uniqueSlices.length - 1].mmCoord) > 0.01
+                    ) {
+                        uniqueSlices.push(s);
+                    }
+                }
+
+                // 5. Calcola l'estensione fisica in millimetri lungo Z
+                const firstMM = uniqueSlices[0]?.mmCoord ?? 0;
+                const lastMM = uniqueSlices[uniqueSlices.length - 1]?.mmCoord ?? 0;
+                const spanMM = Math.abs(lastMM - firstMM);
+
+                // Scarta serie accessorie/scout che hanno meno di 5 fette o estensione millimetrica quasi nulla (< 2 mm)
+                if (uniqueSlices.length < 5 || (uniqueSlices[0].hasIPP && spanMM < 2.0)) {
+                    discardedScoutCount += uniqueSlices.length;
+                    continue;
+                }
+
+                const avgStepMM = spanMM / (uniqueSlices.length - 1);
+                const seriesInfo = {
+                    uid,
+                    slices: uniqueSlices,
+                    count: uniqueSlices.length,
+                    rows: uniqueSlices[0].rows,
+                    cols: uniqueSlices[0].cols,
+                    minMM: firstMM,
+                    maxMM: lastMM,
+                    spanMM,
+                    avgStepMM: (avgStepMM > 0.05 && avgStepMM < 30.0) ? avgStepMM : (uniqueSlices[0].sliceThickness || 1.0),
+                    seriesNumber: uniqueSlices[0].seriesNumber || 0,
+                    seriesDesc: uniqueSlices[0].seriesDesc || `Serie #${uniqueSlices[0].seriesNumber || 1}`
+                };
+
+                LoadedSeriesMap[uid] = seriesInfo;
+                validSeriesList.push(seriesInfo);
+            }
+
+            // Fallback nel caso l'utente abbia caricato intenzionalmente pochissimi file (< 5)
+            if (validSeriesList.length === 0) {
+                const fallbackUID = Object.keys(rawGroups)[0];
+                const slices = rawGroups[fallbackUID];
+                slices.sort((a, b) => (a.mmCoord ?? a.instanceNumber) - (b.mmCoord ?? b.instanceNumber));
+                const firstMM = slices[0]?.mmCoord ?? 0;
+                const lastMM = slices[slices.length - 1]?.mmCoord ?? (slices.length - 1);
+                const spanMM = Math.max(1.0, Math.abs(lastMM - firstMM));
+                const fallbackSeries = {
+                    uid: fallbackUID,
+                    slices,
+                    count: slices.length,
+                    rows: slices[0].rows,
+                    cols: slices[0].cols,
+                    minMM: firstMM,
+                    maxMM: lastMM,
+                    spanMM,
+                    avgStepMM: slices.length > 1 ? spanMM / (slices.length - 1) : (slices[0].sliceThickness || 1.0),
+                    seriesNumber: slices[0].seriesNumber || 1,
+                    seriesDesc: slices[0].seriesDesc || "Serie Caricata"
+                };
+                LoadedSeriesMap[fallbackUID] = fallbackSeries;
+                validSeriesList.push(fallbackSeries);
+            }
+
+            // Ordina le serie nella UI: prima quella con più fette e risoluzione assiale più densa
+            validSeriesList.sort((a, b) => b.count - a.count);
+
+            // Popola il menu a tendina per selezionare tra le serie (0020,000E)
+            const selectorContainer = document.getElementById('seriesSelectorContainer');
+            const selectEl = document.getElementById('seriesSelect');
+            const badgeEl = document.getElementById('seriesCountBadge');
+
+            selectEl.innerHTML = '';
+            validSeriesList.forEach((s, idx) => {
+                const opt = document.createElement('option');
+                opt.value = s.uid;
+                const stepStr = s.avgStepMM.toFixed(2);
+                opt.textContent = `${idx + 1}. ${s.seriesDesc} — ${s.count} fette (${s.cols}×${s.rows}, Δz ${stepStr} mm)`;
+                selectEl.appendChild(opt);
             });
 
-            // Troviamo la serie con il maggior numero di fette (di solito la TAC volumetrica principale)
-            let bestUID = Object.keys(seriesMap)[0];
-            let maxCount = seriesMap[bestUID].length;
-            
-            for (const uid in seriesMap) {
-                if (seriesMap[uid].length > maxCount) {
-                    maxCount = seriesMap[uid].length;
-                    bestUID = uid;
-                }
+            badgeEl.textContent = `${validSeriesList.length} serie`;
+            if (validSeriesList.length > 1) {
+                selectorContainer.classList.remove('hidden');
+            } else {
+                selectorContainer.classList.remove('hidden'); // Visibile anche con 1 serie per confermare l'UID selezionato
             }
 
-            const validSlices = seriesMap[bestUID];
-            
-            // Notifica all'utente se sono state scartate altre serie secondarie (es. scout 2D)
-            if (Object.keys(seriesMap).length > 1) {
-                console.warn(`Rilevate ${Object.keys(seriesMap).length} serie distinte. Selezionata la serie principale con ${maxCount} fette (UID: ${bestUID}).`);
-            }
-
-            // Ordinamento rigoroso lungo l'asse Z spaziale
-            validSlices.sort((a, b) => a.zKey - b.zKey);
-
-            sub.textContent = `Costruzione Texture 3D (${validSlices.length} fette)...`;
+            sub.textContent = `Ricostruzione volume in coordinate millimetriche reali...`;
             bar.style.width = `95%`;
             await new Promise(r => setTimeout(r, 20));
 
-            const origW = validSlices[0].cols;
-            const origH = validSlices[0].rows;
+            // Attiva la serie principale
+            await activateSeriesByUID(validSeriesList[0].uid, discardedScoutCount);
+            overlay.classList.add('hidden');
+        }
+
+        // Costruisce il volume 3D posizionando ogni fetta in base alla sua coordinata millimetrica reale (0020,0032)
+        async function activateSeriesByUID(uid, discardedScoutCount = 0) {
+            const series = LoadedSeriesMap[uid];
+            if (!series || !series.slices || series.slices.length === 0) return;
+
+            const validSlices = series.slices;
+            const origW = series.cols;
+            const origH = series.rows;
             const origD = validSlices.length;
 
             const targetW = Math.min(256, origW);
@@ -1408,42 +1717,94 @@
             const volumeHU = new Int16Array(targetW * targetH * targetD);
             let minH = 3071, maxH = -1024;
 
+            const zMinMM = validSlices[0].mmCoord ?? 0;
+            const zMaxMM = validSlices[origD - 1].mmCoord ?? (origD - 1);
+            const totalSpanMM = zMaxMM - zMinMM;
+            const useRealMM = validSlices[0].hasIPP && Math.abs(totalSpanMM) > 0.5 && origD > 1;
+
+            // Pre-calcola la mappa di campionamento X e Y
+            const xMap = new Int32Array(targetW);
+            const yMap = new Int32Array(targetH);
+            for (let x = 0; x < targetW; x++) xMap[x] = Math.min(origW - 1, Math.floor((x / targetW) * origW));
+            for (let y = 0; y < targetH; y++) yMap[y] = Math.min(origH - 1, Math.floor((y / targetH) * origH));
+
+            let searchIdx = 0;
+
             for (let z = 0; z < targetD; z++) {
-                const srcZ = Math.min(origD - 1, Math.floor((z / targetD) * origD));
-                const sliceData = validSlices[srcZ].huSlice;
-                for (let y = 0; y < targetH; y++) {
-                    const srcY = Math.min(origH - 1, Math.floor((y / targetH) * origH));
-                    for (let x = 0; x < targetW; x++) {
-                        const srcX = Math.min(origW - 1, Math.floor((x / targetW) * origW));
-                        const val = sliceData[srcY * origW + srcX];
-                        volumeHU[z * targetW * targetH + y * targetW + x] = val;
-                        if (val < minH) minH = val;
-                        if (val > maxH) maxH = val;
+                const u = (targetD > 1) ? (z / (targetD - 1)) : 0.0;
+
+                if (useRealMM) {
+                    // Coordinata millimetrica fisica esatta del piano Z corrente nel volume 3D
+                    const targetMM = zMinMM + u * totalSpanMM;
+
+                    // Ricerca binaria/monotona delle due fette reali che racchiudono targetMM
+                    while (searchIdx < origD - 2 && validSlices[searchIdx + 1].mmCoord < targetMM) {
+                        searchIdx++;
+                    }
+                    const s0 = validSlices[searchIdx];
+                    const s1 = validSlices[Math.min(origD - 1, searchIdx + 1)];
+                    const denom = (s1.mmCoord - s0.mmCoord);
+                    const alpha = (Math.abs(denom) > 1e-4)
+                        ? Math.max(0.0, Math.min(1.0, (targetMM - s0.mmCoord) / denom))
+                        : 0.0;
+
+                    const sliceA = s0.huSlice;
+                    const sliceB = s1.huSlice;
+                    const zOffset = z * targetW * targetH;
+
+                    // Interpolazione lineare lungo la coordinata millimetrica reale Z
+                    for (let y = 0; y < targetH; y++) {
+                        const rowOff = yMap[y] * origW;
+                        const dstRow = zOffset + y * targetW;
+                        for (let x = 0; x < targetW; x++) {
+                            const srcIdx = rowOff + xMap[x];
+                            const val = Math.round(sliceA[srcIdx] * (1.0 - alpha) + sliceB[srcIdx] * alpha);
+                            volumeHU[dstRow + x] = val;
+                            if (val < minH) minH = val;
+                            if (val > maxH) maxH = val;
+                        }
+                    }
+                } else {
+                    // Fallback per serie prive di tag 0020,0032
+                    const srcZ = Math.min(origD - 1, Math.floor(u * (origD - 1)));
+                    const sliceData = validSlices[srcZ].huSlice;
+                    const zOffset = z * targetW * targetH;
+                    for (let y = 0; y < targetH; y++) {
+                        const rowOff = yMap[y] * origW;
+                        const dstRow = zOffset + y * targetW;
+                        for (let x = 0; x < targetW; x++) {
+                            const val = sliceData[rowOff + xMap[x]];
+                            volumeHU[dstRow + x] = val;
+                            if (val < minH) minH = val;
+                            if (val > maxH) maxH = val;
+                        }
                     }
                 }
             }
 
-            let dz = validSlices[0].sliceThickness || 1.0;
-            if (validSlices.length > 2) {
-                const diffZ = Math.abs(validSlices[validSlices.length - 1].zKey - validSlices[0].zKey) / (validSlices.length - 1);
-                if (diffZ > 0.1 && diffZ < 20.0) dz = diffZ;
-            }
+            // Spaziatura fisica millimetrica reale del voxel ricostruito
+            const dzRealMM = series.avgStepMM;
 
             VolumeState.width = targetW;
             VolumeState.height = targetH;
             VolumeState.depth = targetD;
             VolumeState.spacingX = validSlices[0].pixelSpacingX * (origW / targetW);
             VolumeState.spacingY = validSlices[0].pixelSpacingY * (origH / targetH);
-            VolumeState.spacingZ = dz * (origD / targetD);
+            VolumeState.spacingZ = dzRealMM * (origD / targetD);
             VolumeState.huData = volumeHU;
             VolumeState.minHU = minH;
             VolumeState.maxHU = maxH;
-            VolumeState.seriesTitle = validSlices[0].seriesDesc || `Serie TAC (${origW}×${origH}×${origD})`;
-            VolumeState.modality = `DICOM • ${origD} fette`;
+            VolumeState.seriesTitle = `${series.seriesDesc} (${origD} fette)`;
+            VolumeState.modality = `CT • Δz ${dzRealMM.toFixed(2)}mm`;
 
             uploadVolumeToGPU();
-            overlay.classList.add('hidden');
-            showToast(`Caricate ${origD} fette della serie principale pulita!`);
+
+            // Mostra nel box metadati il range millimetrico reale Z coperto dalla serie
+            document.getElementById('metaHURange').textContent = `${zMinMM.toFixed(0)}..${zMaxMM.toFixed(0)}mm`;
+
+            const totalSeries = Object.keys(LoadedSeriesMap).length;
+            const scoutNote = discardedScoutCount > 0 ? ` (${discardedScoutCount} scout/accessori scartati)` : '';
+            showToast(`Serie attiva: "${series.seriesDesc}" • ${origD} fette posizionate in mm reali su ${totalSeries} serie${scoutNote}`);
         }
 
         // =========================================================================
@@ -1580,9 +1941,9 @@
         }
 
         function syncClipToMPR(axis) {
-            const W = VolumeState.width;
-            const H = VolumeState.height;
-            const D = VolumeState.depth;
+            const W = Math.max(2, VolumeState.width);
+            const H = Math.max(2, VolumeState.height);
+            const D = Math.max(2, VolumeState.depth);
             if (axis === 'z') {
                 const zPct = Math.round((parseInt(document.getElementById('sliceZ').value) / (D - 1)) * 100);
                 document.getElementById('clipZMax').value = zPct;
@@ -1852,8 +2213,12 @@
                 gl.enable(gl.BLEND);
                 gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-                // 1. Manteniamo il cubo unitario di raymarching perfettamente centrato [-0.5, 0.5]^3
-                const scaleVec = [1.0, 1.0, 1.0];
+                // 1. Calcola le proporzioni fisiche reali in millimetri (X, Y, Z) del volume paziente
+                const physX = VolumeState.width * VolumeState.spacingX;
+                const physY = VolumeState.height * VolumeState.spacingY;
+                const physZ = VolumeState.depth * VolumeState.spacingZ;
+                const maxPhys = Math.max(physX, physY, physZ, 1e-4);
+                const scaleVec = [physX / maxPhys, physY / maxPhys, physZ / maxPhys];
 
                 // 2. Calcolo della camera orbitale nello spazio standard del cubo
                 const cosP = Math.cos(Camera.pitch);
