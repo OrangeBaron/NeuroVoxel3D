@@ -142,11 +142,11 @@
                 <span class="hidden md:inline">Seleziona File .DCM</span>
             </button>
 
-            <button id="btnDemoSkull" onclick="generateProceduralPhantom()" class="px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-medium text-xs flex items-center gap-1.5 transition" title="Genera un Teschio TAC Sintetico ad Alta Risoluzione in Unità Hounsfield">
+            <button id="btnDemoSkull" onclick="generateProceduralPhantom()" class="px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-medium text-xs flex items-center gap-1.5 transition" title="Genera un Phantom Procedurale TAC 3D ad Alta Risoluzione in Unità Hounsfield">
                 <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                 </svg>
-                <span class="hidden lg:inline">Teschio Demo 3D</span>
+                <span class="hidden lg:inline">Volume Demo 3D</span>
             </button>
 
             <div class="h-5 w-[1px] bg-slate-800 mx-1 hidden sm:block"></div>
@@ -175,7 +175,7 @@
                     </span>
                     <span id="metaModality" class="text-[11px] mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">CT • HU</span>
                 </div>
-                <div id="metaTitle" class="text-xs font-semibold text-white truncate">Teschio Demo Sintetico (HR-CT)</div>
+                <div id="metaTitle" class="text-xs font-semibold text-white truncate">Phantom Procedurale (HR-CT)</div>
 
                 <!-- Selettore Serie DICOM (visibile automaticamente con esami multi-serie) -->
                 <div id="seriesSelectorContainer" class="hidden mt-2.5 pt-2 border-t border-slate-800/80">
@@ -214,30 +214,51 @@
                 <div class="grid grid-cols-2 gap-2">
                     <button onclick="applyPreset('bone')" id="preset-bone" class="preset-btn active-preset p-2.5 rounded-lg border border-slate-700/80 bg-slate-900/60 hover:bg-slate-800/70 text-left transition">
                         <div class="flex items-center justify-between">
-                            <span class="text-xs font-semibold text-amber-200">💀 Teschio Puro</span>
+                            <span class="text-xs font-semibold text-amber-200">🦴 Tessuti ad Alta Densità</span>
                         </div>
-                        <p class="text-[10px] text-slate-400 mt-0.5">Osso corticale & denti (&gt;220 HU)</p>
+                        <p class="text-[10px] text-slate-400 mt-0.5">Strutture calcifiche (&gt;220 HU)</p>
                     </button>
 
                     <button onclick="applyPreset('hybrid')" id="preset-hybrid" class="preset-btn p-2.5 rounded-lg border border-slate-700/80 bg-slate-900/60 hover:bg-slate-800/70 text-left transition">
                         <div class="flex items-center justify-between">
-                            <span class="text-xs font-semibold text-rose-300">🧬 Osso + Pelle</span>
+                            <span class="text-xs font-semibold text-rose-300">🧬 Ibrido Multi-Tessuto</span>
                         </div>
-                        <p class="text-[10px] text-slate-400 mt-0.5">Tessuti molli semitrasparenti</p>
+                        <p class="text-[10px] text-slate-400 mt-0.5">Alta densità + Tessuti molli</p>
+                    </button>
+
+                    <button onclick="applyPreset('lungs')" id="preset-lungs" class="preset-btn p-2.5 rounded-lg border border-slate-700/80 bg-slate-900/60 hover:bg-slate-800/70 text-left transition">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-semibold text-cyan-300">🫁 Polmoni / Vie Aeree</span>
+                        </div>
+                        <p class="text-[10px] text-slate-400 mt-0.5">Parenchima (-700 / -400 HU)</p>
+                    </button>
+
+                    <button onclick="applyPreset('abdomen')" id="preset-abdomen" class="preset-btn p-2.5 rounded-lg border border-slate-700/80 bg-slate-900/60 hover:bg-slate-800/70 text-left transition">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-semibold text-orange-300">🫀 Addome / Organi</span>
+                        </div>
+                        <p class="text-[10px] text-slate-400 mt-0.5">Parenchimi (+20 / +60 HU)</p>
+                    </button>
+
+                    <button onclick="applyPreset('angio_mdc')" id="preset-angio_mdc" class="preset-btn p-2.5 rounded-lg border border-slate-700/80 bg-slate-900/60 hover:bg-slate-800/70 text-left transition">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-semibold text-red-400">🩸 Angio MDC</span>
+                        </div>
+                        <p class="text-[10px] text-slate-400 mt-0.5">Vasi opacizzati (+100 / +300 HU)</p>
                     </button>
 
                     <button onclick="applyPreset('angio')" id="preset-angio" class="preset-btn p-2.5 rounded-lg border border-slate-700/80 bg-slate-900/60 hover:bg-slate-800/70 text-left transition">
                         <div class="flex items-center justify-between">
-                            <span class="text-xs font-semibold text-red-400">🩸 Alta Densità</span>
+                            <span class="text-xs font-semibold text-amber-400">⚡ Iperdensità Estrema</span>
                         </div>
-                        <p class="text-[10px] text-slate-400 mt-0.5">Smalto, rocca petrosa, MDC</p>
+                        <p class="text-[10px] text-slate-400 mt-0.5">Target ad alto contrasto (&gt;550 HU)</p>
                     </button>
 
-                    <button onclick="applyPreset('mip')" id="preset-mip" class="preset-btn p-2.5 rounded-lg border border-slate-700/80 bg-slate-900/60 hover:bg-slate-800/70 text-left transition">
+                    <button onclick="applyPreset('mip')" id="preset-mip" class="preset-btn col-span-2 p-2.5 rounded-lg border border-slate-700/80 bg-slate-900/60 hover:bg-slate-800/70 text-left transition">
                         <div class="flex items-center justify-between">
-                            <span class="text-xs font-semibold text-sky-300">☢️ Lastra MIP</span>
+                            <span class="text-xs font-semibold text-sky-300">☢️ Lastra MIP (Maximum Intensity Projection)</span>
                         </div>
-                        <p class="text-[10px] text-slate-400 mt-0.5">Proiezione Massima Intensità</p>
+                        <p class="text-[10px] text-slate-400 mt-0.5">Proiezione volumetrica di massima intensità stile angiografico/radiografico</p>
                     </button>
                 </div>
             </div>
@@ -246,37 +267,37 @@
             <div class="p-4 border-b border-slate-800/80 space-y-3.5">
                 <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-300">2. Trasparenza & Soglie Tessuti</h2>
 
-                <!-- Soglia Osso (HU) -->
+                <!-- Soglia Primaria (HU) -->
                 <div>
                     <div class="flex justify-between text-xs mb-1">
-                        <span class="text-slate-300 font-medium">Soglia Osso (Iso-HU)</span>
-                        <span id="valBoneThresh" class="mono text-amber-400 font-semibold">230 HU</span>
+                        <span class="text-slate-300 font-medium">Soglia Primaria (Iso-HU)</span>
+                        <span id="valPrimaryThresh" class="mono text-amber-400 font-semibold">230 HU</span>
                     </div>
-                    <input type="range" id="sliderBoneThresh" min="-200" max="1200" value="230" step="5" class="amber-slider" oninput="updateTransferParams()">
+                    <input type="range" id="sliderPrimaryThresh" min="-900" max="1200" value="230" step="5" class="amber-slider" oninput="updateTransferParams()">
                     <div class="flex justify-between text-[10px] text-slate-500 mt-0.5">
-                        <span>Cartilagine (-100)</span>
-                        <span>Osso (250)</span>
-                        <span>Smalto (1000+)</span>
+                        <span>Vie Aeree (-700)</span>
+                        <span>Tessuti Molli (+40)</span>
+                        <span>Alta Densità (300+)</span>
                     </div>
                 </div>
 
-                <!-- Morbidezza / Finestra Osso -->
+                <!-- Finestra / Contrasto Struttura Target -->
                 <div>
                     <div class="flex justify-between text-xs mb-1">
-                        <span class="text-slate-300 font-medium">Contrasto / Durezza Osso</span>
-                        <span id="valBoneSharp" class="mono text-sky-300">180 HU</span>
+                        <span class="text-slate-300 font-medium">Finestra / Contrasto Struttura Target</span>
+                        <span id="valPrimarySharp" class="mono text-sky-300">180 HU</span>
                     </div>
-                    <input type="range" id="sliderBoneSharp" min="20" max="600" value="180" step="5" oninput="updateTransferParams()">
+                    <input type="range" id="sliderPrimarySharp" min="15" max="600" value="180" step="5" oninput="updateTransferParams()">
                 </div>
 
-                <!-- Trasparenza Tessuti Molli / Pelle -->
+                <!-- Trasparenza Tessuti Molli / Secondari -->
                 <div>
                     <div class="flex justify-between text-xs mb-1">
-                        <span class="text-slate-300 font-medium">Opacità Tessuti Molli / Cute</span>
-                        <span id="valSoftOpacity" class="mono text-rose-400 font-semibold">0%</span>
+                        <span class="text-slate-300 font-medium">Opacità Tessuti Molli di Contesto</span>
+                        <span id="valSecondaryOpacity" class="mono text-rose-400 font-semibold">0%</span>
                     </div>
-                    <input type="range" id="sliderSoftOpacity" min="0" max="100" value="0" step="1" oninput="updateTransferParams()">
-                    <p class="text-[10px] text-slate-500 mt-0.5">Mostra muscoli e cute (-300 a +120 HU) come velo fantasma</p>
+                    <input type="range" id="sliderSecondaryOpacity" min="0" max="100" value="0" step="1" oninput="updateTransferParams()">
+                    <p class="text-[10px] text-slate-500 mt-0.5">Mostra i tessuti molli circostanti (-300 a +120 HU) come velo semitrasparente</p>
                 </div>
 
                 <!-- Opacità Globale Volume -->
@@ -320,14 +341,14 @@
                     <input type="range" id="sliderSteps" min="96" max="512" value="280" step="16" class="emerald-slider" oninput="updateTransferParams()">
                 </div>
 
-                <!-- Colore Osso Personalizzabile -->
+                <!-- Mappatura Cromatica (Color Map) -->
                 <div class="pt-1 flex items-center justify-between">
-                    <span class="text-xs text-slate-300">Tonalità Osso</span>
+                    <span class="text-xs text-slate-300">Mappatura Cromatica (Color Map)</span>
                     <div class="flex gap-1.5">
-                        <button onclick="setBoneTint(1.0, 0.96, 0.86)" class="w-6 h-6 rounded-full border-2 border-white/60 shadow" style="background: #fff4db;" title="Avorio Naturale"></button>
-                        <button onclick="setBoneTint(1.0, 1.0, 1.0)" class="w-6 h-6 rounded-full border border-slate-600" style="background: #ffffff;" title="Bianco Clinico"></button>
-                        <button onclick="setBoneTint(0.95, 0.82, 0.60)" class="w-6 h-6 rounded-full border border-slate-600" style="background: #f2d199;" title="Ambra Antico"></button>
-                        <button onclick="setBoneTint(0.70, 0.92, 1.0)" class="w-6 h-6 rounded-full border border-slate-600" style="background: #b3ebff;" title="Ciano Olografico"></button>
+                        <button onclick="setPrimaryTint(1.0, 0.96, 0.86)" class="w-6 h-6 rounded-full border-2 border-white/60 shadow" style="background: #fff4db;" title="Gradiente Caldo Standard"></button>
+                        <button onclick="setPrimaryTint(1.0, 1.0, 1.0)" class="w-6 h-6 rounded-full border border-slate-600" style="background: #ffffff;" title="Monocromatico Clinico"></button>
+                        <button onclick="setPrimaryTint(0.95, 0.58, 0.42)" class="w-6 h-6 rounded-full border border-slate-600" style="background: #f2946b;" title="Arancio Vascolare / Parenchimale"></button>
+                        <button onclick="setPrimaryTint(0.55, 0.88, 1.0)" class="w-6 h-6 rounded-full border border-slate-600" style="background: #8ce0ff;" title="Ciano Vie Aeree / Polmonare"></button>
                     </div>
                 </div>
             </div>
@@ -348,7 +369,7 @@
                     <button onclick="setCameraView('front')" class="px-2 py-1 text-xs rounded bg-slate-800/90 hover:bg-sky-500/20 hover:text-sky-300 border border-slate-700 transition">Frontale (Cor)</button>
                     <button onclick="setCameraView('side')" class="px-2 py-1 text-xs rounded bg-slate-800/90 hover:bg-sky-500/20 hover:text-sky-300 border border-slate-700 transition">Profilo (Sag)</button>
                     <button onclick="setCameraView('top')" class="px-2 py-1 text-xs rounded bg-slate-800/90 hover:bg-sky-500/20 hover:text-sky-300 border border-slate-700 transition">Assiale (Sup)</button>
-                    <button onclick="setCameraView('iso')" class="px-2 py-1 text-xs rounded bg-slate-800/90 hover:bg-sky-500/20 hover:text-sky-300 border border-slate-700 transition">3/4 Cranio</button>
+                    <button onclick="setCameraView('iso')" class="px-2 py-1 text-xs rounded bg-slate-800/90 hover:bg-sky-500/20 hover:text-sky-300 border border-slate-700 transition">Vista Isometrica</button>
                     <div class="h-4 w-[1px] bg-slate-700 mx-0.5"></div>
                     <button id="btnAutoRotate" onclick="toggleAutoRotate()" class="px-2.5 py-1 text-xs rounded bg-slate-800/90 hover:bg-amber-500/20 text-slate-300 border border-slate-700 flex items-center gap-1 transition">
                         <span>🔄 Cinema</span>
@@ -385,7 +406,7 @@
             <!-- TOAST / STATUS MESSAGE -->
             <div id="statusToast" class="absolute bottom-4 left-4 glass-panel px-3.5 py-2 rounded-xl border border-sky-500/30 text-xs text-slate-200 flex items-center gap-2 shadow-lg pointer-events-none transition-opacity duration-300">
                 <span class="w-2 h-2 rounded-full bg-sky-400"></span>
-                <span id="statusText">Pronto • Trascina una cartella DICOM o esplora il Teschio 3D</span>
+                <span id="statusText">Pronto • Trascina una cartella DICOM o esplora il Volume Demo 3D</span>
             </div>
         </main>
 
@@ -403,7 +424,7 @@
                     </h2>
                     <button onclick="resetClipping()" class="text-[11px] text-sky-400 hover:text-sky-300 underline">Reset Tagli</button>
                 </div>
-                <p class="text-[11px] text-slate-400">Taglia il volume 3D lungo i 3 piani anatomici per ispezionare l'interno della scatola cranica e dei seni paranasali.</p>
+                <p class="text-[11px] text-slate-400">Taglia il volume 3D lungo i 3 piani anatomici per ispezionare le sezioni interne del distretto anatomico in esame.</p>
 
                 <!-- Asse X: Sagittale (Destra / Sinistra) -->
                 <div class="bg-slate-900/70 p-2.5 rounded-lg border border-slate-800">
@@ -514,9 +535,9 @@
                     <div class="flex justify-between text-[10px] text-slate-400 mb-1">
                         <span>Finestra 2D (WL/WW):</span>
                         <div class="flex gap-1">
-                            <button onclick="set2DWindow(400, 1800)" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200">Osso</button>
-                            <button onclick="set2DWindow(40, 400)" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200">Tessuti</button>
-                            <button onclick="set2DWindow(-500, 1500)" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200">Seni/Aria</button>
+                            <button onclick="set2DWindow(400, 1800)" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200">Alta Densità</button>
+                            <button onclick="set2DWindow(40, 400)" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200">Tessuti Molli</button>
+                            <button onclick="set2DWindow(-500, 1500)" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200">Polmone/Aria</button>
                         </div>
                     </div>
                 </div>
@@ -551,20 +572,20 @@
 
         uniform sampler3D uVolumeTex;
         uniform vec3 uCamPosObj;
-        uniform vec3 uVolumeScale;     // Proporzioni fisiche (es. mm)
-        uniform vec3 uClipMin;         // [0..1]
-        uniform vec3 uClipMax;         // [0..1]
+        uniform vec3 uVolumeScale;         // Proporzioni fisiche (es. mm)
+        uniform vec3 uClipMin;             // [0..1]
+        uniform vec3 uClipMax;             // [0..1]
 
-        // Parametri Funzione di Trasferimento Hounsfield
-        uniform float uBoneThreshold;  // es. 230 HU
-        uniform float uBoneSharpness;  // es. 180 HU
-        uniform float uSoftOpacity;    // [0..1]
-        uniform float uGlobalAlpha;    // [0.1..1.5]
-        uniform float uSpecular;       // [0..1]
-        uniform float uShadeStrength;  // [0..1]
-        uniform int uSteps;            // [96..512]
-        uniform int uRenderMode;       // 0 = Phong Volume, 1 = MIP (Raggi X)
-        uniform vec3 uBoneTint;        // Colore osso primario
+        // Parametri Funzione di Trasferimento Hounsfield Universale (Total-Body)
+        uniform float uPrimaryThreshold;   // Soglia o centro finestra target (es. -550 HU polmoni, +40 HU addome, +200 HU angio, +230 HU alta densità)
+        uniform float uPrimarySharpness;   // Ampiezza / contrasto transizione HU
+        uniform float uSecondaryOpacity;   // Opacità tessuti secondari di contesto [0..1]
+        uniform float uGlobalAlpha;        // Moltiplicatore densità globale [0.1..1.5]
+        uniform float uSpecular;           // Riflessione speculare Phong [0..1]
+        uniform float uShadeStrength;      // Intensità ombreggiatura direzionale [0..1]
+        uniform int uSteps;                // Passi di campionamento [96..512]
+        uniform int uRenderMode;           // 0 = Phong High-Pass, 1 = MIP, 2 = Phong Band-Pass (Polmoni / Organi / Angio selettivo)
+        uniform vec3 uPrimaryTint;         // Mappatura cromatica struttura target
 
         // Converte il valore normalizzato [0..1] della texture 3D in Hounsfield Units [-1024..+3071]
         float sampleHU(vec3 uvw) {
@@ -616,7 +637,7 @@
             float maxDist = length(uVolumeScale);
             float stepSize = maxDist / float(uSteps);
 
-            // Jittering del punto di partenza per levigare le superfici ossee
+            // Jittering del punto di partenza per levigare le superfici volumetriche
             float jitter = hash12(gl_FragCoord.xy) * stepSize;
             float t = tHit.x + jitter;
 
@@ -625,6 +646,10 @@
 
             vec3 lightDir = normalize(uCamPosObj + vec3(0.6, 0.8, 0.5));
             vec3 viewDir = -rayDir;
+
+            float halfWidth = max(uPrimarySharpness * 0.5, 10.0);
+            float lowBound  = uPrimaryThreshold - halfWidth;
+            float highBound = uPrimaryThreshold + halfWidth;
 
             for (int i = 0; i < 512; i++) {
                 if (i >= uSteps || t > tHit.y || accum.a >= 0.985) break;
@@ -639,35 +664,53 @@
                     // Modalità MIP (Raggi X / Proiezione Massima Intensità)
                     maxMIP = max(maxMIP, hu);
                 } else {
-                    // Modalità Volume Raymarching con Transfer Function Anatomica
+                    // Modalità Volume Raymarching con Transfer Function Total-Body Universale
                     vec3 sampleCol = vec3(0.0);
                     float sampleAlpha = 0.0;
 
-                    // 1. Contributo Tessuti Molli / Cute (-300 HU .. +140 HU)
-                    if (uSoftOpacity > 0.001 && hu > -320.0 && hu < uBoneThreshold) {
-                        float softFactor = smoothstep(-320.0, -40.0, hu) * (1.0 - smoothstep(80.0, uBoneThreshold, hu));
+                    // 1. Contributo Tessuti Secondari di Contesto (-320 HU .. +150 HU)
+                    if (uSecondaryOpacity > 0.001 && hu > -320.0 && hu < 160.0) {
+                        float secFactor = smoothstep(-320.0, -40.0, hu) * (1.0 - smoothstep(80.0, 160.0, hu));
                         sampleCol = mix(vec3(0.75, 0.35, 0.30), vec3(0.95, 0.68, 0.58), smoothstep(-150.0, 70.0, hu));
-                        sampleAlpha = softFactor * uSoftOpacity * 0.08;
+                        sampleAlpha = secFactor * uSecondaryOpacity * 0.08;
                     }
 
-                    // 2. Contributo Osso Trabecolare, Corticale & Smalto Dentale
-                    if (hu > (uBoneThreshold - uBoneSharpness * 0.5)) {
-                        float boneFactor = smoothstep(uBoneThreshold - uBoneSharpness * 0.5, uBoneThreshold + uBoneSharpness * 0.5, hu);
-                        
-                        // Gradiente cromatico da osso spugnoso caldo a corticale avorio fino a smalto brillante
-                        vec3 trabecularCol = uBoneTint * vec3(0.82, 0.65, 0.48);
-                        vec3 corticalCol   = uBoneTint;
-                        vec3 enamelCol     = vec3(1.0, 1.0, 1.0);
+                    // 2. Contributo Struttura Primaria Target (Soglia High-Pass oppure Finestra Band-Pass per Polmoni/Organi)
+                    float primaryFactor = 0.0;
+                    if (uRenderMode == 2) {
+                        // Modalità Band-Pass (es. Polmoni -700..-400 HU o Parenchimi Addominali +20..+60 HU)
+                        float fadeMargin = max(halfWidth * 0.45, 12.0);
+                        if (hu > (lowBound - fadeMargin) && hu < (highBound + fadeMargin)) {
+                            float rampIn  = smoothstep(lowBound - fadeMargin, lowBound + fadeMargin * 0.4, hu);
+                            float rampOut = 1.0 - smoothstep(highBound - fadeMargin * 0.4, highBound + fadeMargin, hu);
+                            primaryFactor = rampIn * rampOut;
+                        }
+                    } else {
+                        // Modalità High-Pass Iso-Soglia (Tessuti Densi, Vasi con MDC, Strutture Iperdense)
+                        if (hu > lowBound) {
+                            primaryFactor = smoothstep(lowBound, highBound, hu);
+                        }
+                    }
 
-                        vec3 bCol = mix(trabecularCol, corticalCol, smoothstep(uBoneThreshold - 50.0, uBoneThreshold + 350.0, hu));
-                        bCol = mix(bCol, enamelCol, smoothstep(800.0, 1600.0, hu));
+                    if (primaryFactor > 0.005) {
+                        // Mappatura Cromatica dinamica centrata sul range della struttura target
+                        vec3 shadowTint = uPrimaryTint * vec3(0.76, 0.62, 0.48);
+                        vec3 baseTint   = uPrimaryTint;
+                        vec3 peakTint   = mix(uPrimaryTint, vec3(1.0, 1.0, 1.0), 0.72);
 
-                        float bAlpha = boneFactor * 0.42 * uGlobalAlpha;
+                        float normRange = clamp((hu - lowBound) / max(uPrimarySharpness * 1.6, 25.0), 0.0, 1.0);
+                        vec3 targetCol = mix(shadowTint, baseTint, smoothstep(0.0, 0.55, normRange));
+                        targetCol = mix(targetCol, peakTint, smoothstep(0.55, 1.0, normRange));
+
+                        // Per il parenchima polmonare/vie aeree, riduciamo leggermente la densità per step per dare profondità alveolare/bronchiale
+                        float densityScale = (uPrimaryThreshold < -250.0) ? 0.24 : 0.42;
+                        float pAlpha = primaryFactor * densityScale * uGlobalAlpha;
 
                         // Illuminazione 3D Phong sul gradiente locale
-                        if (bAlpha > 0.01) {
+                        if (pAlpha > 0.008) {
                             vec3 grad = computeNormal(uvw, 0.008);
-                            vec3 normal = -grad; // La normale punta verso l'esterno (densità decrescente)
+                            // Per cavità aeree/polmoni a bassa densità usiamo illuminazione a doppia faccia sul gradiente
+                            vec3 normal = (uPrimaryThreshold < -250.0) ? (dot(grad, viewDir) > 0.0 ? grad : -grad) : -grad;
 
                             float diff = max(dot(normal, lightDir), 0.0);
                             float rim  = pow(1.0 - max(dot(normal, viewDir), 0.0), 2.5);
@@ -679,12 +722,12 @@
                             float minClipDist = min(min(distToClip.x, distToClip.y), distToClip.z);
                             float cutHighlight = 1.0 - smoothstep(0.0, 0.012, minClipDist);
 
-                            vec3 litBone = bCol * mix(1.0, (0.28 + 0.72 * diff + 0.18 * rim), uShadeStrength) + vec3(spec * 0.85);
-                            // Colore sezione ossea tagliata dal bisturi 3D
-                            litBone = mix(litBone, uBoneTint * 0.92, cutHighlight * 0.65);
+                            vec3 litTarget = targetCol * mix(1.0, (0.28 + 0.72 * diff + 0.18 * rim), uShadeStrength) + vec3(spec * 0.85);
+                            // Colore sezione tagliata dal bisturi 3D
+                            litTarget = mix(litTarget, uPrimaryTint * 0.92, cutHighlight * 0.65);
 
-                            sampleCol = mix(sampleCol, litBone, boneFactor);
-                            sampleAlpha = max(sampleAlpha, bAlpha);
+                            sampleCol = mix(sampleCol, litTarget, primaryFactor);
+                            sampleAlpha = max(sampleAlpha, pAlpha);
                         }
                     }
 
@@ -701,7 +744,7 @@
 
             if (uRenderMode == 1) {
                 // Output MIP Radiografico
-                float mipNorm = smoothstep(uBoneThreshold - 300.0, uBoneThreshold + 1100.0, maxMIP);
+                float mipNorm = smoothstep(uPrimaryThreshold - 300.0, uPrimaryThreshold + 1100.0, maxMIP);
                 vec3 xrayCol = mix(vec3(0.04, 0.09, 0.16), vec3(0.88, 0.96, 1.0), mipNorm);
                 fragColor = vec4(xrayCol * mipNorm, mipNorm * 0.95);
             } else {
@@ -714,7 +757,7 @@
     </script>
 
     <!-- ========================================================================= -->
-    <!-- LOGICA APPLICATIVA: PARSER DICOM + GENERATORE TESCHIO + WEBGL2 + MPR 2D   -->
+    <!-- LOGICA APPLICATIVA: PARSER DICOM + PHANTOM PROCEDURALE + WEBGL2 + MPR 2D  -->
     <!-- ========================================================================= -->
     <script>
         // --- STATO GLOBALE DEL VOLUME ---
@@ -729,18 +772,18 @@
             texData: null,      // Uint8Array o Float32Array normalizzato per WebGL2
             minHU: -1024,
             maxHU: 2400,
-            seriesTitle: "Teschio Demo Sintetico (HR-CT)",
+            seriesTitle: "Phantom Procedurale (HR-CT)",
             modality: "CT • HU",
-            // Parametri Transfer Function
-            boneThreshold: 230,
-            boneSharpness: 180,
-            softOpacity: 0.0,
+            // Parametri Transfer Function Universale (Total-Body)
+            primaryThreshold: 230,
+            primarySharpness: 180,
+            secondaryOpacity: 0.0,
             globalAlpha: 0.95,
             specular: 0.65,
             shadeStrength: 0.85,
             steps: 280,
-            renderMode: 0,      // 0 = Volume 3D Phong, 1 = MIP
-            boneTint: [1.0, 0.96, 0.86],
+            renderMode: 0,      // 0 = High-Pass Phong, 1 = MIP, 2 = Band-Pass Phong (Polmoni / Addome)
+            primaryTint: [1.0, 0.96, 0.86],
             // Clipping Box [0..1]
             clipMin: [0.0, 0.0, 0.0],
             clipMax: [1.0, 1.0, 1.0],
@@ -831,9 +874,9 @@
             // Cache Uniform Locations
             const uNames = [
                 'uModelViewProjection', 'uVolumeTex', 'uCamPosObj', 'uVolumeScale',
-                'uClipMin', 'uClipMax', 'uBoneThreshold', 'uBoneSharpness',
-                'uSoftOpacity', 'uGlobalAlpha', 'uSpecular', 'uShadeStrength',
-                'uSteps', 'uRenderMode', 'uBoneTint'
+                'uClipMin', 'uClipMax', 'uPrimaryThreshold', 'uPrimarySharpness',
+                'uSecondaryOpacity', 'uGlobalAlpha', 'uSpecular', 'uShadeStrength',
+                'uSteps', 'uRenderMode', 'uPrimaryTint'
             ];
             uNames.forEach(name => {
                 uniforms[name] = gl.getUniformLocation(program, name);
@@ -913,13 +956,13 @@
         }
 
         // =========================================================================
-        // 2. GENERATORE PROCEDURALE TESCHIO TAC 3D (IN UNITÀ HOUNSFIELD REALI)
+        // 2. GENERATORE PHANTOM PROCEDURALE 3D (IN UNITÀ HOUNSFIELD REALI)
         // =========================================================================
         function generateProceduralPhantom() {
             const overlay = document.getElementById('loadingOverlay');
             overlay.classList.remove('hidden');
-            document.getElementById('loadingTitle').textContent = "Generazione Teschio TAC Sintetico 3D...";
-            document.getElementById('loadingSub').textContent = "Costruzione calotta cranica, orbite, zigomi, mandibola e denti in Unità Hounsfield";
+            document.getElementById('loadingTitle').textContent = "Generazione Volume Demo 3D (Phantom Procedurale)...";
+            document.getElementById('loadingSub').textContent = "Sintesi strutture multi-densità (tessuti molli, vie aeree, vasi e strutture ad alta densità) in Unità Hounsfield";
             document.getElementById('loadingBar').style.width = "65%";
 
             setTimeout(() => {
@@ -1024,23 +1067,31 @@
                                 }
                             }
 
-                            // SENI MASCELLARI & FRONTALI (Aria pneumatizzata -950 HU)
+                            // SENI PNEUMATIZZATI & VIE AEREE CON MUCOSA/SETTI (-650..-480 HU)
                             const sinX = (Math.abs(xn) - 0.23) / 0.13;
                             const sinY = (yn + 0.42) / 0.16;
                             const sinZ = (zn + 0.22) / 0.13;
-                            if (sinX * sinX + sinY * sinY + sinZ * sinZ < 1.0) {
-                                valHU = -960;
+                            const sinDist = sinX * sinX + sinY * sinY + sinZ * sinZ;
+                            if (sinDist < 1.0) {
+                                valHU = sinDist > 0.55 ? -560 : -940;
                             }
 
-                            // ARCATA DENTARIA SUPERIORE E INFERIORE (Smalto ad altissima densità 1500-2100 HU)
+                            // TRONCHI VASCOLARI PRINCIPALI CON MEZZO DI CONTRASTO (+180..+260 HU)
+                            const vascX = Math.abs(xn) - (0.16 + 0.03 * Math.sin(zn * 5.0));
+                            const vascY = yn + 0.04 - 0.04 * zn;
+                            if (vascX * vascX + vascY * vascY < 0.0022 && zn > -0.75 && zn < 0.38) {
+                                valHU = Math.max(valHU, 225);
+                            }
+
+                            // STRUTTURE AD ALTISSIMA DENSITÀ (1500-2100 HU)
                             const toothRadius = Math.sqrt(xn * xn + (yn + 0.38) * (yn + 0.38));
                             if (Math.abs(toothRadius - 0.33) < 0.045 && yn < -0.22 && Math.abs(zn + 0.38) < 0.075) {
-                                // Modulazione angolare per separare i singoli denti
+                                // Modulazione angolare per separare i singoli elementi
                                 const angle = Math.atan2(yn + 0.38, xn);
                                 const toothGap = Math.sin(angle * 28.0);
                                 const archGap = Math.abs(zn + 0.38);
                                 if (toothGap > -0.55 && archGap > 0.012) {
-                                    valHU = 1750; // Smalto e dentina
+                                    valHU = 1750;
                                 }
                             }
 
@@ -1069,12 +1120,12 @@
                 VolumeState.huData = hu;
                 VolumeState.minHU = -1024;
                 VolumeState.maxHU = 1950;
-                VolumeState.seriesTitle = "Teschio Demo Sintetico (HR-CT)";
+                VolumeState.seriesTitle = "Phantom Procedurale (HR-CT)";
                 VolumeState.modality = "CT • PHANTOM";
 
                 uploadVolumeToGPU();
                 overlay.classList.add('hidden');
-                showToast("Teschio 3D pronto! Ruota col mouse o usa gli slider per affettare il volume.");
+                showToast("Volume Demo 3D pronto! Ruota col mouse o usa gli slider per affettare il volume.");
             }, 80);
         }
 
@@ -1908,11 +1959,13 @@
                     const [vx, vy, vz] = getCoordsFn(nx, ny);
                     const idx = vz * VolumeState.width * VolumeState.height + vy * VolumeState.width + vx;
                     const hu = VolumeState.huData[idx];
-                    let tissue = "Aria";
-                    if (hu > 1000) tissue = "Smalto / Corticale Densa";
-                    else if (hu > 220) tissue = "Osso";
+                    let tissue = "Aria / Fondo";
+                    if (hu > 1000) tissue = "Tessuto Iperdenso";
+                    else if (hu > 220) tissue = "Tessuto ad Alta Densità";
+                    else if (hu > 100) tissue = "Vasi / Strutture Opacizzate";
                     else if (hu > 15) tissue = "Tessuto Molle / Parenchima";
-                    else if (hu > -120) tissue = "Adipe / Cute";
+                    else if (hu > -150) tissue = "Tessuto Adiposo";
+                    else if (hu > -850) tissue = "Parenchima Polmonare / Vie Aeree";
                     probeEl.textContent = `${hu} HU (${tissue})`;
                 });
             };
@@ -1966,64 +2019,97 @@
             if (activeBtn) activeBtn.classList.add('active-preset');
 
             if (presetName === 'bone') {
-                document.getElementById('sliderBoneThresh').value = 230;
-                document.getElementById('sliderBoneSharp').value = 180;
-                document.getElementById('sliderSoftOpacity').value = 0;
+                // Tessuti ad Alta Densità (>220 HU)
+                document.getElementById('sliderPrimaryThresh').value = 230;
+                document.getElementById('sliderPrimarySharp').value = 180;
+                document.getElementById('sliderSecondaryOpacity').value = 0;
                 document.getElementById('sliderGlobalAlpha').value = 95;
                 document.getElementById('sliderSpecular').value = 65;
-                VolumeState.renderMode = 0;
-                VolumeState.boneTint = [1.0, 0.96, 0.86];
+                VolumeState.renderMode = 0; // High-Pass Phong
+                VolumeState.primaryTint = [1.0, 0.96, 0.86];
             } else if (presetName === 'hybrid') {
-                document.getElementById('sliderBoneThresh').value = 250;
-                document.getElementById('sliderBoneSharp').value = 160;
-                document.getElementById('sliderSoftOpacity').value = 38;
+                // Ibrido Multi-Tessuto (Alta densità + Tessuti molli di contesto)
+                document.getElementById('sliderPrimaryThresh').value = 250;
+                document.getElementById('sliderPrimarySharp').value = 160;
+                document.getElementById('sliderSecondaryOpacity').value = 38;
                 document.getElementById('sliderGlobalAlpha').value = 95;
                 document.getElementById('sliderSpecular').value = 70;
-                VolumeState.renderMode = 0;
-                VolumeState.boneTint = [1.0, 0.96, 0.86];
+                VolumeState.renderMode = 0; // High-Pass Phong
+                VolumeState.primaryTint = [1.0, 0.96, 0.86];
+            } else if (presetName === 'lungs') {
+                // A. Polmoni / Vie Aeree (Parenchima polmonare, range HU circa -700 / -400)
+                document.getElementById('sliderPrimaryThresh').value = -550;
+                document.getElementById('sliderPrimarySharp').value = 300;
+                document.getElementById('sliderSecondaryOpacity').value = 8;
+                document.getElementById('sliderGlobalAlpha').value = 85;
+                document.getElementById('sliderSpecular').value = 35;
+                VolumeState.renderMode = 2; // Band-Pass Phong per isolare -700..-400 HU
+                VolumeState.primaryTint = [0.55, 0.88, 1.0];
+                set2DWindow(-550, 1400);
+            } else if (presetName === 'abdomen') {
+                // B. Addome / Organi (Tessuti molli addominali, range ristretto circa +20 / +60 HU)
+                document.getElementById('sliderPrimaryThresh').value = 40;
+                document.getElementById('sliderPrimarySharp').value = 45;
+                document.getElementById('sliderSecondaryOpacity').value = 12;
+                document.getElementById('sliderGlobalAlpha').value = 100;
+                document.getElementById('sliderSpecular').value = 55;
+                VolumeState.renderMode = 2; // Band-Pass Phong stretto attorno a +20..+60 HU
+                VolumeState.primaryTint = [0.95, 0.58, 0.42];
+                set2DWindow(40, 350);
+            } else if (presetName === 'angio_mdc') {
+                // C. Angio MDC (Vasi sanguigni opacizzati, range circa +100 / +300 HU)
+                document.getElementById('sliderPrimaryThresh').value = 200;
+                document.getElementById('sliderPrimarySharp').value = 200;
+                document.getElementById('sliderSecondaryOpacity').value = 10;
+                document.getElementById('sliderGlobalAlpha').value = 110;
+                document.getElementById('sliderSpecular').value = 85;
+                VolumeState.renderMode = 0; // High-Pass Phong a partire da ~100 HU
+                VolumeState.primaryTint = [0.96, 0.36, 0.32];
+                set2DWindow(200, 600);
             } else if (presetName === 'angio') {
-                document.getElementById('sliderBoneThresh').value = 580;
-                document.getElementById('sliderBoneSharp').value = 220;
-                document.getElementById('sliderSoftOpacity').value = 8;
+                // Iperdensità Estrema
+                document.getElementById('sliderPrimaryThresh').value = 580;
+                document.getElementById('sliderPrimarySharp').value = 220;
+                document.getElementById('sliderSecondaryOpacity').value = 8;
                 document.getElementById('sliderGlobalAlpha').value = 115;
                 document.getElementById('sliderSpecular').value = 88;
                 VolumeState.renderMode = 0;
-                VolumeState.boneTint = [1.0, 0.92, 0.80];
+                VolumeState.primaryTint = [1.0, 0.92, 0.80];
             } else if (presetName === 'mip') {
-                document.getElementById('sliderBoneThresh').value = 180;
+                document.getElementById('sliderPrimaryThresh').value = 180;
                 VolumeState.renderMode = 1;
             }
             updateTransferParams();
         }
 
         function updateTransferParams() {
-            const bThresh = parseFloat(document.getElementById('sliderBoneThresh').value);
-            const bSharp  = parseFloat(document.getElementById('sliderBoneSharp').value);
-            const sOpac   = parseFloat(document.getElementById('sliderSoftOpacity').value);
+            const pThresh = parseFloat(document.getElementById('sliderPrimaryThresh').value);
+            const pSharp  = parseFloat(document.getElementById('sliderPrimarySharp').value);
+            const sOpac   = parseFloat(document.getElementById('sliderSecondaryOpacity').value);
             const gAlpha  = parseFloat(document.getElementById('sliderGlobalAlpha').value);
             const spec    = parseFloat(document.getElementById('sliderSpecular').value);
             const shade   = parseFloat(document.getElementById('sliderShade').value);
             const steps   = parseInt(document.getElementById('sliderSteps').value);
 
-            VolumeState.boneThreshold = bThresh;
-            VolumeState.boneSharpness = bSharp;
-            VolumeState.softOpacity = sOpac / 100.0;
+            VolumeState.primaryThreshold = pThresh;
+            VolumeState.primarySharpness = pSharp;
+            VolumeState.secondaryOpacity = sOpac / 100.0;
             VolumeState.globalAlpha = gAlpha / 100.0;
             VolumeState.specular = spec / 100.0;
             VolumeState.shadeStrength = shade / 100.0;
             VolumeState.steps = steps;
 
-            document.getElementById('valBoneThresh').textContent = `${bThresh} HU`;
-            document.getElementById('valBoneSharp').textContent = `${bSharp} HU`;
-            document.getElementById('valSoftOpacity').textContent = `${sOpac}%`;
+            document.getElementById('valPrimaryThresh').textContent = `${pThresh} HU`;
+            document.getElementById('valPrimarySharp').textContent = `${pSharp} HU`;
+            document.getElementById('valSecondaryOpacity').textContent = `${sOpac}%`;
             document.getElementById('valGlobalAlpha').textContent = `${gAlpha}%`;
             document.getElementById('valSpecular').textContent = `${spec}%`;
             document.getElementById('valShade').textContent = `${shade}%`;
             document.getElementById('valSteps').textContent = `${steps} step`;
         }
 
-        function setBoneTint(r, g, b) {
-            VolumeState.boneTint = [r, g, b];
+        function setPrimaryTint(r, g, b) {
+            VolumeState.primaryTint = [r, g, b];
         }
 
         function updateClipping() {
@@ -2254,15 +2340,15 @@
                 gl.uniform3fv(uniforms.uClipMin, VolumeState.clipMin);
                 gl.uniform3fv(uniforms.uClipMax, VolumeState.clipMax);
 
-                gl.uniform1f(uniforms.uBoneThreshold, VolumeState.boneThreshold);
-                gl.uniform1f(uniforms.uBoneSharpness, VolumeState.boneSharpness);
-                gl.uniform1f(uniforms.uSoftOpacity, VolumeState.softOpacity);
+                gl.uniform1f(uniforms.uPrimaryThreshold, VolumeState.primaryThreshold);
+                gl.uniform1f(uniforms.uPrimarySharpness, VolumeState.primarySharpness);
+                gl.uniform1f(uniforms.uSecondaryOpacity, VolumeState.secondaryOpacity);
                 gl.uniform1f(uniforms.uGlobalAlpha, VolumeState.globalAlpha);
                 gl.uniform1f(uniforms.uSpecular, VolumeState.specular);
                 gl.uniform1f(uniforms.uShadeStrength, VolumeState.shadeStrength);
                 gl.uniform1i(uniforms.uSteps, Camera.isDragging ? Math.min(180, VolumeState.steps) : VolumeState.steps);
                 gl.uniform1i(uniforms.uRenderMode, VolumeState.renderMode);
-                gl.uniform3fv(uniforms.uBoneTint, VolumeState.boneTint);
+                gl.uniform3fv(uniforms.uPrimaryTint, VolumeState.primaryTint);
 
                 gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0);
                 gl.bindVertexArray(null);
